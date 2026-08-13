@@ -1,4 +1,13 @@
-#include "RGBController_ASRockRX9070XT.h"
+/*---------------------------------------------------------*\
+| RGBController_ASRockRX9070XTGPU.cpp                       |
+|                                                           |
+|   RGBController for ASRock RX 9070 XT Steel Legend GPU    |
+|                                                           |
+|   This file is part of the OpenRGB project                |
+|   SPDX-License-Identifier: GPL-2.0-or-later               |
+\*---------------------------------------------------------*/
+
+#include "RGBController_ASRockRX9070XTGPU.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -21,47 +30,63 @@ namespace
     }
 }
 
-RGBController_ASRockRX9070XT::RGBController_ASRockRX9070XT(ASRockRX9070XTController* controller_ptr)
+/**------------------------------------------------------------------*\
+    @name ASRock Radeon RX 9070 XT Steel Legend
+    @category GPU
+    @type I2C
+    @save :x:
+    @direct :x:
+    @effects :white_check_mark:
+    @detectors DetectASRockRX9070XTGPUControllers
+    @comment
+        Initial native controller for the ASRock Radeon RX 9070 XT
+        Steel Legend GPU RGB controller.  This controller uses the
+        known I2C packet at address 0x36 and exposes the three known
+        hardware channels as OpenRGB zones.
+\*-------------------------------------------------------------------*/
+
+RGBController_ASRockRX9070XTGPU::RGBController_ASRockRX9070XTGPU(ASRockRX9070XTGPUController* controller_ptr)
     : controller(controller_ptr)
 {
     name        = "ASRock RX 9070 XT Steel Legend";
     vendor      = "ASRock";
     description = "ASRock RX 9070 XT Steel Legend GPU RGB Controller";
-    version     = "0.1.2";
+    version     = "0.1.0-native-test";
     serial      = "";
     location    = controller ? controller->GetLocation() : "I2C bus unavailable";
     type        = DEVICE_TYPE_GPU;
     flags       = CONTROLLER_FLAG_LOCAL;
 
-    AddHardwareMode("Off Mode",              0x01, MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_MODE_SPECIFIC);
+    AddHardwareMode("Off",                   0x01, MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_MODE_SPECIFIC);
     modes.back().colors[0] = ToRGBColor(0, 0, 0);
+
     AddHardwareMode("Static",                0x01, MODE_FLAG_HAS_PER_LED_COLOR | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_PER_LED);
     AddHardwareMode("Breathing",             0x02, MODE_FLAG_HAS_PER_LED_COLOR | MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_PER_LED);
     AddHardwareMode("Strobe",                0x03, MODE_FLAG_HAS_PER_LED_COLOR | MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_PER_LED);
-    AddHardwareMode("Cycling",               0x04, MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_NONE);
+    AddHardwareMode("RGB Cycle",             0x04, MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_NONE);
     AddHardwareMode("Random",                0x05, MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS | MODE_FLAG_HAS_RANDOM_COLOR, MODE_COLORS_RANDOM);
-    AddHardwareMode("Wave",                  0x07, MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_NONE);
-    AddHardwareMode("Spring",                0x08, MODE_FLAG_HAS_PER_LED_COLOR | MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_PER_LED);
-    AddHardwareMode("Stack",                 0x09, MODE_FLAG_HAS_PER_LED_COLOR | MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_PER_LED);
-    AddHardwareMode("Cram",                  0x0A, MODE_FLAG_HAS_PER_LED_COLOR | MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_PER_LED);
-    AddHardwareMode("Scan",                  0x0B, MODE_FLAG_HAS_PER_LED_COLOR | MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_PER_LED);
-    AddHardwareMode("Neon",                  0x0C, MODE_FLAG_HAS_PER_LED_COLOR | MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_PER_LED);
-    AddHardwareMode("Water",                 0x0D, MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS | MODE_FLAG_HAS_RANDOM_COLOR, MODE_COLORS_RANDOM);
+    AddHardwareMode("Color Shift",           0x07, MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_NONE);
+    AddHardwareMode("Visor",                 0x08, MODE_FLAG_HAS_PER_LED_COLOR | MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_PER_LED);
+    AddHardwareMode("Stacking",              0x09, MODE_FLAG_HAS_PER_LED_COLOR | MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_PER_LED);
+    AddHardwareMode("Fill Wave",             0x0A, MODE_FLAG_HAS_PER_LED_COLOR | MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_PER_LED);
+    AddHardwareMode("Traveling Wave",        0x0B, MODE_FLAG_HAS_PER_LED_COLOR | MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_PER_LED);
+    AddHardwareMode("Marquee Color",         0x0C, MODE_FLAG_HAS_PER_LED_COLOR | MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_PER_LED);
+    AddHardwareMode("Marquee Random",        0x0D, MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS | MODE_FLAG_HAS_RANDOM_COLOR, MODE_COLORS_RANDOM);
+    AddHardwareMode("Color Wave",            0x0E, MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_NONE);
     AddHardwareMode("Rainbow",               0x0F, MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_NONE);
-    AddHardwareMode("Rainbow 2",             0x0E, MODE_FLAG_HAS_SPEED | MODE_FLAG_HAS_BRIGHTNESS, MODE_COLORS_NONE);
 
     SetupZones();
 }
 
-RGBController_ASRockRX9070XT::~RGBController_ASRockRX9070XT()
+RGBController_ASRockRX9070XTGPU::~RGBController_ASRockRX9070XTGPU()
 {
     delete controller;
 }
 
-void RGBController_ASRockRX9070XT::AddHardwareMode(const char* mode_name,
-                                                   uint8_t value,
-                                                   unsigned int mode_flags,
-                                                   unsigned int color_mode)
+void RGBController_ASRockRX9070XTGPU::AddHardwareMode(const char* mode_name,
+                                                      uint8_t value,
+                                                      unsigned int mode_flags,
+                                                      unsigned int color_mode)
 {
     mode new_mode;
     new_mode.name           = mode_name;
@@ -83,7 +108,7 @@ void RGBController_ASRockRX9070XT::AddHardwareMode(const char* mode_name,
     modes.push_back(new_mode);
 }
 
-void RGBController_ASRockRX9070XT::SetupZones()
+void RGBController_ASRockRX9070XTGPU::SetupZones()
 {
     if(controller == nullptr)
     {
@@ -121,80 +146,17 @@ void RGBController_ASRockRX9070XT::SetupZones()
     }
 }
 
-
-unsigned int RGBController_ASRockRX9070XT::GetHardwareChannelCount() const
-{
-    return controller ? controller->GetChannelCount() : 0;
-}
-
-std::string RGBController_ASRockRX9070XT::GetHardwareChannelName(unsigned int index) const
-{
-    if(controller == nullptr || index >= controller->GetChannelCount())
-    {
-        return std::string();
-    }
-
-    return controller->GetChannel(index).name;
-}
-
-void RGBController_ASRockRX9070XT::ApplyCustomSettings(int target_index,
-                                                       uint8_t mode_value,
-                                                       uint8_t red,
-                                                       uint8_t green,
-                                                       uint8_t blue,
-                                                       uint8_t speed_value,
-                                                       uint8_t brightness_value,
-                                                       uint8_t direction_value)
-{
-    if(controller == nullptr)
-    {
-        return;
-    }
-
-    const uint8_t hardware_speed = MapOpenRGBSpeedToHardwareSpeed(speed_value, 0x20, 0xFF);
-
-    auto write_index = [&](unsigned int index)
-    {
-        if(index >= controller->GetChannelCount())
-        {
-            return;
-        }
-
-        const auto& channel = controller->GetChannel(index);
-        controller->WriteChannel(channel.value,
-                                 mode_value,
-                                 red,
-                                 green,
-                                 blue,
-                                 hardware_speed,
-                                 brightness_value,
-                                 direction_value);
-    };
-
-    if(target_index < 0)
-    {
-        for(unsigned int index = 0; index < controller->GetChannelCount(); index++)
-        {
-            write_index(index);
-        }
-    }
-    else
-    {
-        write_index(static_cast<unsigned int>(target_index));
-    }
-}
-
-void RGBController_ASRockRX9070XT::ResizeZone(int /*zone*/, int /*new_size*/)
+void RGBController_ASRockRX9070XTGPU::ResizeZone(int /*zone*/, int /*new_size*/)
 {
     // Fixed hardware zones.
 }
 
-void RGBController_ASRockRX9070XT::DeviceUpdateLEDs()
+void RGBController_ASRockRX9070XTGPU::DeviceUpdateLEDs()
 {
     DeviceUpdateMode();
 }
 
-void RGBController_ASRockRX9070XT::UpdateZoneLEDs(int zone)
+void RGBController_ASRockRX9070XTGPU::UpdateZoneLEDs(int zone)
 {
     if(zone < 0 || static_cast<unsigned int>(zone) >= zones.size())
     {
@@ -225,12 +187,12 @@ void RGBController_ASRockRX9070XT::UpdateZoneLEDs(int zone)
                              ClampToByte(current_mode.direction));
 }
 
-void RGBController_ASRockRX9070XT::UpdateSingleLED(int led_idx)
+void RGBController_ASRockRX9070XTGPU::UpdateSingleLED(int led_idx)
 {
     UpdateZoneLEDs(led_idx);
 }
 
-void RGBController_ASRockRX9070XT::DeviceUpdateMode()
+void RGBController_ASRockRX9070XTGPU::DeviceUpdateMode()
 {
     for(unsigned int zone_idx = 0; zone_idx < zones.size(); zone_idx++)
     {
