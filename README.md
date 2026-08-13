@@ -14,7 +14,7 @@ If you previously installed the test plugin, remove it before testing this nativ
 
 ## Status
 
-Tested on Linux with OpenRGB `0.9+ (git1974)` at commit:
+Tested on Linux with OpenRGB `0.9+ (git2305)` at commit:
 
 ```text
 4306603a28c86e91f4dd4f89b41efd3005f0b810
