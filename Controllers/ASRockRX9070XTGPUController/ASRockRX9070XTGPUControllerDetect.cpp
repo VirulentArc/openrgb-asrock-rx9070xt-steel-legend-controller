@@ -15,43 +15,36 @@
 #include "i2c_smbus.h"
 
 #include <string>
-#include <vector>
 
 namespace
 {
-    static constexpr uint8_t ASROCK_RX9070XT_RGB_ADDRESS = 0x36;
-    static constexpr int     ASROCK_RX9070XT_TEST_BUS_ID = 7;
+    static constexpr uint16_t AMD_PCI_VENDOR_ID                         = 0x1002;
+    static constexpr uint16_t AMD_NAVI48_RX9070XT_PCI_DEVICE_ID         = 0x7550;
+    static constexpr uint16_t ASROCK_PCI_SUBSYSTEM_VENDOR_ID            = 0x1849;
+    static constexpr uint16_t ASROCK_RX9070XT_STEEL_LEGEND_SUBDEVICE_ID = 0x5403;
+    static constexpr uint8_t  ASROCK_RX9070XT_RGB_ADDRESS               = ASRockRX9070XTGPUController::I2C_ADDRESS;
 }
 
-void DetectASRockRX9070XTGPUControllers(std::vector<i2c_smbus_interface*>& busses)
+void DetectASRockRX9070XTGPUControllers(i2c_smbus_interface* bus, uint8_t address, const std::string& name)
 {
-    for(i2c_smbus_interface* bus : busses)
+    if(bus == nullptr)
     {
-        if(bus == nullptr)
-        {
-            continue;
-        }
-
-        // Local native test detector:
-        // The known-good controller was found on OpenRGB I2C bus 7 at address 0x36.
-        // For an upstream-ready detector, replace this generic I2C detector with an
-        // I2C PCI detector registered against the card's exact PCI/subsystem IDs.
-        if(bus->bus_id != ASROCK_RX9070XT_TEST_BUS_ID)
-        {
-            continue;
-        }
-
-        const std::string name = "ASRock RX 9070 XT Steel Legend";
-
-        ASRockRX9070XTGPUController* controller = new ASRockRX9070XTGPUController(bus, name);
-        RGBController_ASRockRX9070XTGPU* rgb_controller = new RGBController_ASRockRX9070XTGPU(controller);
-
-        LOG_INFO("[%s] Registering ASRock RX 9070 XT Steel Legend RGB controller on I2C bus %d address 0x%02X",
-                 name.c_str(), bus->bus_id, ASROCK_RX9070XT_RGB_ADDRESS);
-
-        ResourceManager::get()->RegisterRGBController(rgb_controller);
         return;
     }
+
+    ASRockRX9070XTGPUController* controller = new ASRockRX9070XTGPUController(bus, name);
+    RGBController_ASRockRX9070XTGPU* rgb_controller = new RGBController_ASRockRX9070XTGPU(controller);
+
+    LOG_INFO("[%s] Registering ASRock RX 9070 XT Steel Legend RGB controller on I2C bus %d address 0x%02X",
+             name.c_str(), bus->bus_id, address);
+
+    ResourceManager::get()->RegisterRGBController(rgb_controller);
 }
 
-REGISTER_I2C_DETECTOR("ASRock RX 9070 XT Steel Legend", DetectASRockRX9070XTGPUControllers);
+REGISTER_I2C_PCI_DETECTOR("ASRock RX 9070 XT Steel Legend",
+                          DetectASRockRX9070XTGPUControllers,
+                          AMD_PCI_VENDOR_ID,
+                          AMD_NAVI48_RX9070XT_PCI_DEVICE_ID,
+                          ASROCK_PCI_SUBSYSTEM_VENDOR_ID,
+                          ASROCK_RX9070XT_STEEL_LEGEND_SUBDEVICE_ID,
+                          ASROCK_RX9070XT_RGB_ADDRESS);
