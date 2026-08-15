@@ -110,6 +110,8 @@ The installer builds OpenRGB from this tested commit:
 4306603a28c86e91f4dd4f89b41efd3005f0b810
 ```
 
+The installer copies the controller into the OpenRGB source tree, then patches OpenRGB.pro at the controller discovery section so qmake includes these exact Steel Legend source files.
+
 Build files are placed under:
 
 ```text

@@ -20,9 +20,9 @@
 extern "C"
 {
 #if defined(__GNUC__)
-__attribute__((used))
+__attribute__((used, visibility("default")))
 #endif
-const char ASROCK_RX9070XT_STEEL_LEGEND_BUILD_MARKER[] = "ASRock RX 9070 XT Steel Legend";
+const char* ASROCK_RX9070XT_STEEL_LEGEND_BUILD_MARKER = "ASRock RX 9070 XT Steel Legend";
 }
 
 namespace
