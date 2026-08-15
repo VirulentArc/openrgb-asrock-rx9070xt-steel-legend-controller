@@ -8,7 +8,7 @@ This repository contains one native OpenRGB controller folder for the ASRock Rad
 
 A native OpenRGB controller is source code that gets compiled into OpenRGB. After this folder is added to an OpenRGB source checkout and OpenRGB is rebuilt, the card can be detected as a normal OpenRGB device.
 
-This controller matches the tested Steel Legend card by PCI/subsystem ID, then talks to the GPU RGB controller over the AMDGPU OEM I2C bus at address `0x36`.
+This controller uses the RGB controller that was tested on Linux on the AMDGPU OEM I2C bus at address `0x36`.
 
 ## Requirements
 
@@ -44,9 +44,8 @@ Tested card:
 
 ```text
 ASRock Radeon RX 9070 XT Steel Legend 16GB
-PCI/device ID:        1002:7550
-Subsystem vendor/dev: 1849:5403
-RGB I2C address:      0x36
+RGB I2C address: 0x36
+Tested OpenRGB I2C bus: 7
 ```
 
 Known hardware channels:
@@ -57,9 +56,7 @@ Known hardware channels:
 7 = Fan
 ```
 
-The detector is tied to the tested PCI/subsystem IDs. Users should not need to edit their I2C bus number.
-
-Do not change the PCI IDs, I2C address, channel numbers, or mode values for another GPU unless that card has been tested.
+This release uses the tested Linux OpenRGB I2C bus detector. The earlier PCI detector experiment has been removed because it did not detect the card on the tested system.
 
 ## What this adds to OpenRGB
 
@@ -101,7 +98,7 @@ The speed slider is inverted in the controller code so higher OpenRGB speed mean
 
 ## Step 1: create a clean source workspace
 
-This folder is where the OpenRGB source code and this controller source will be placed.
+This creates one workspace for the OpenRGB source code and this controller source.
 
 ```text
 rm -rf "$HOME/.local/src/openrgb-asrock-steel-legend"
@@ -153,9 +150,7 @@ OpenRGB's qmake project automatically includes controller source files from the 
 
 ## Step 5: remove the old test plugin if it was installed
 
-This native controller replaces the older test plugin approach.
-
-If the old plugin is still installed, OpenRGB may show duplicate devices or crash while loading the stale plugin.
+This removes the old plugin file from the earlier plugin test version.
 
 ```text
 rm -f "$HOME/.config/OpenRGB/plugins/libOpenRGBASRockRX9070XTPlugin.so"
@@ -163,13 +158,13 @@ rm -f "$HOME/.config/OpenRGB/plugins/libOpenRGBASRockRX9070XTPlugin.so"
 
 ## Step 6: rebuild OpenRGB from source
 
-This builds a local OpenRGB binary from the source tree that now contains the Steel Legend controller.
+This builds an OpenRGB binary from the source tree that now contains the Steel Legend controller.
 
 ```text
 cd "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB"
 rm -f OpenRGB openrgb Makefile .qmake.stash
 qmake OpenRGB.pro
-make
+make -j$(nproc)
 ```
 
 The rebuilt binary should be:
@@ -178,13 +173,57 @@ The rebuilt binary should be:
 $HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB/OpenRGB
 ```
 
-## Step 7: run the rebuilt OpenRGB
+## Step 7: confirm the rebuilt binary contains the controller
 
-This starts the OpenRGB binary that was just built from source.
+This checks that the Steel Legend controller text exists inside the binary that was just built.
 
 ```text
-cd "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB"
-./OpenRGB
+strings "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB/OpenRGB" | grep -F "ASRock RX 9070 XT Steel Legend"
+```
+
+Expected result:
+
+```text
+ASRock RX 9070 XT Steel Legend
+```
+
+## Step 8: make the rebuilt OpenRGB the normal OpenRGB command for your user
+
+This copies the rebuilt binary to `$HOME/.local/bin/openrgb`.
+
+On most Linux desktops, `$HOME/.local/bin` is checked before `/usr/bin`, so the normal `openrgb` command will use this rebuilt copy while the distro package remains installed.
+
+```text
+mkdir -p "$HOME/.local/bin"
+cp "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB/OpenRGB" "$HOME/.local/bin/openrgb"
+chmod +x "$HOME/.local/bin/openrgb"
+```
+
+Confirm which OpenRGB will run:
+
+```text
+command -v openrgb
+strings "$(command -v openrgb)" | grep -F "ASRock RX 9070 XT Steel Legend"
+```
+
+Expected command path:
+
+```text
+$HOME/.local/bin/openrgb
+```
+
+Expected controller text:
+
+```text
+ASRock RX 9070 XT Steel Legend
+```
+
+## Step 9: run OpenRGB normally
+
+This should now launch the rebuilt OpenRGB with the Steel Legend controller included.
+
+```text
+openrgb
 ```
 
 Expected result:
@@ -195,41 +234,41 @@ ASRock RX 9070 XT Steel Legend appears as a device
 ARGB Header, Top / Side, and Fan appear as zones
 ```
 
-If `./OpenRGB` does not exist, check what was built:
+## Step 10: update autostart
+
+If OpenRGB is already set to start at login, point that autostart entry at the user-local rebuilt OpenRGB binary.
 
 ```text
-cd "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB"
-find . -maxdepth 1 -type f -executable \( -name 'OpenRGB' -o -name 'openrgb' \) -print
+sed -i 's#^Exec=.*#Exec='$HOME'/.local/bin/openrgb --startminimized#' "$HOME/.config/autostart/OpenRGB.desktop"
 ```
 
-If the binary is named `openrgb` instead, run:
+If you use a saved profile, add it back at the end of the `Exec=` line.
+
+Example:
 
 ```text
-./openrgb
+Exec=/home/tim/.local/bin/openrgb --startminimized --profile "Dark"
 ```
 
-## Optional: create a user-local launcher
+## If the device does not appear
 
-This copies the rebuilt OpenRGB binary to a user-local command named `openrgb-asrock`.
+Check whether the controller was actually compiled into the OpenRGB you launched:
 
 ```text
-mkdir -p "$HOME/.local/bin"
-cp "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB/OpenRGB" "$HOME/.local/bin/openrgb-asrock"
-chmod +x "$HOME/.local/bin/openrgb-asrock"
+command -v openrgb
+strings "$(command -v openrgb)" | grep -F "ASRock RX 9070 XT Steel Legend"
 ```
 
-Run it with:
+Check the tested I2C bus exists:
 
 ```text
-openrgb-asrock
+i2cdetect -l | grep -E 'i2c-7|OEM|AMDGPU'
 ```
 
-If your build produced `openrgb` instead of `OpenRGB`, copy that file instead:
+The tested working system used:
 
 ```text
-mkdir -p "$HOME/.local/bin"
-cp "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB/openrgb" "$HOME/.local/bin/openrgb-asrock"
-chmod +x "$HOME/.local/bin/openrgb-asrock"
+i2c-7 AMDGPU DM i2c OEM bus
 ```
 
 ## Cleanup
@@ -240,29 +279,13 @@ Remove the source workspace:
 rm -rf "$HOME/.local/src/openrgb-asrock-steel-legend"
 ```
 
-Remove the optional user-local launcher:
+Remove the user-local rebuilt OpenRGB command:
 
 ```text
-rm -f "$HOME/.local/bin/openrgb-asrock"
+rm -f "$HOME/.local/bin/openrgb"
 ```
 
-## Check the detector
-
-Use this if the Steel Legend device does not appear.
-
-This command shows the AMD GPU and subsystem ID:
-
-```text
-lspci -Dnn -vv -d 1002:7550 | grep -Ei 'VGA|Display|Subsystem|Kernel driver'
-```
-
-Expected Steel Legend subsystem:
-
-```text
-Subsystem: ASRock Incorporation Device [1849:5403]
-```
-
-If the subsystem ID is not `1849:5403`, this detector is not expected to attach.
+After removing the user-local command, the normal `openrgb` command will use the distro package again.
 
 ## Low-level packet
 
