@@ -34,7 +34,7 @@ On Linux, the user must have I2C access. On many distros that means the user is 
 Run this command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh | bash
+cd /tmp && curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh | bash
 ```
 
 Then open OpenRGB normally.
@@ -96,7 +96,7 @@ The installer tries to find the AMDGPU OEM I2C bus automatically. If detection f
 To force a different bus:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh | ASROCK_RX9070XT_I2C_BUS=7 bash
+cd /tmp && curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh | env ASROCK_RX9070XT_I2C_BUS=7 bash
 ```
 
 Replace `7` with the correct bus number from:
@@ -108,7 +108,7 @@ i2cdetect -l
 ## Remove
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/uninstall.sh | bash
+cd /tmp && curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/uninstall.sh | bash
 ```
 
 This restores the backed-up OpenRGB binary if a backup is available.

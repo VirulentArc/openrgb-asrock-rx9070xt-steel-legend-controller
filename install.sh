@@ -48,6 +48,8 @@ if [ ! -e "$TARGET_BIN" ]; then
     exit 1
 fi
 
+cd /
+
 echo "Installing custom OpenRGB over: $TARGET_BIN"
 echo "Build workspace: $WORKSPACE"
 
@@ -119,11 +121,15 @@ path.write_text(text)
 PY
 
 echo "Rebuilding OpenRGB."
+echo "Build output will be written to:"
+echo "  /tmp/openrgb-asrock-qmake.log"
+echo "  /tmp/openrgb-asrock-build.log"
+echo
 cd "$OPENRGB_DIR"
 make clean >/dev/null 2>&1 || true
 rm -f OpenRGB openrgb Makefile .qmake.stash
-qmake OpenRGB.pro >/tmp/openrgb-asrock-qmake.log 2>&1
-make -j"$(nproc)" >/tmp/openrgb-asrock-build.log 2>&1
+qmake OpenRGB.pro 2>&1 | tee /tmp/openrgb-asrock-qmake.log
+make -j"$(nproc)" 2>&1 | tee /tmp/openrgb-asrock-build.log
 
 BUILT_BIN=""
 for candidate in "$OPENRGB_DIR/OpenRGB" "$OPENRGB_DIR/openrgb"; do
