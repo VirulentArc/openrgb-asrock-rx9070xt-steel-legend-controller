@@ -11,7 +11,7 @@ OPENRGB_DIR="$WORKSPACE/OpenRGB"
 CONTROLLER_REPO_DIR="$WORKSPACE/openrgb-asrock-rx9070xt-steel-legend-controller"
 CONTROLLER_DIR="ASRockRX9070XTGPUController"
 SOURCE_CONTROLLER_DIR="$CONTROLLER_REPO_DIR/Controllers/$CONTROLLER_DIR"
-BUILD_CONTROLLER_DIR="$OPENRGB_DIR/Controllers/$CONTROLLER_DIR"
+BUILD_CONTROLLER_DIR="$OPENRGB_DIR/Controllers"
 DEVICE_TEXT="ASRock RX 9070 XT Steel Legend"
 KNOWN_ADDRESS="0x36"
 TARGET_BIN="/usr/bin/openrgb"
@@ -273,10 +273,22 @@ verify_controller_source_files() {
     done
 }
 
-verify_project_auto_discovers_controllers() {
+verify_project_can_see_flat_controllers() {
     local project_file="$1"
-    grep -Fq 'Controllers/*.cpp' "$project_file" || fail "OpenRGB.pro does not contain recursive controller .cpp discovery."
-    grep -Fq 'Controllers/*.h' "$project_file" || fail "OpenRGB.pro does not contain recursive controller .h discovery."
+    grep -Fq 'Controllers/*.cpp' "$project_file" || fail "OpenRGB.pro does not include Controllers/*.cpp."
+    grep -Fq 'Controllers/*.h' "$project_file" || fail "OpenRGB.pro does not include Controllers/*.h."
+}
+
+install_controller_sources_flat() {
+    local file
+
+    echo "Adding Steel Legend controller source to OpenRGB."
+
+    rm -rf "$OPENRGB_DIR/Controllers/$CONTROLLER_DIR"
+    for file in "${CONTROLLER_SOURCES[@]}" "${CONTROLLER_HEADERS[@]}"; do
+        rm -f "$BUILD_CONTROLLER_DIR/$file"
+        cp -a "$SOURCE_CONTROLLER_DIR/$file" "$BUILD_CONTROLLER_DIR/$file"
+    done
 }
 
 find_built_binary() {
@@ -339,11 +351,8 @@ echo "Cloning Steel Legend controller source."
 git clone --quiet "$REPO_URL" "$CONTROLLER_REPO_DIR"
 
 verify_controller_source_files "$SOURCE_CONTROLLER_DIR"
-verify_project_auto_discovers_controllers "$OPENRGB_DIR/OpenRGB.pro"
-
-echo "Adding Steel Legend controller source to OpenRGB."
-rm -rf "$BUILD_CONTROLLER_DIR"
-cp -a "$SOURCE_CONTROLLER_DIR" "$OPENRGB_DIR/Controllers/"
+verify_project_can_see_flat_controllers "$OPENRGB_DIR/OpenRGB.pro"
+install_controller_sources_flat
 
 patch_controller_bus_and_address \
     "$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUControllerDetect.cpp" \
@@ -369,22 +378,28 @@ BUILT_BIN="$(find_built_binary || true)"
 [ -n "$BUILT_BIN" ] || fail "Build finished, but no OpenRGB binary was found. Build log: $BUILD_LOG"
 
 if ! strings "$BUILT_BIN" | grep -Fq "$DEVICE_TEXT"; then
-    fail "The rebuilt OpenRGB binary does not contain the Steel Legend controller. Build log: $BUILD_LOG"
+    echo "The rebuilt binary did not contain: $DEVICE_TEXT"
+    echo "Controller files copied into OpenRGB/Controllers were:"
+    ls -l "$BUILD_CONTROLLER_DIR"/ASRockRX9070XTGPUController* "$BUILD_CONTROLLER_DIR"/RGBController_ASRockRX9070XTGPU* 2>/dev/null || true
+    echo "qmake log: $QMAKE_LOG"
+    echo "Build log: $BUILD_LOG"
+    fail "The Steel Legend controller was not linked into the rebuilt OpenRGB binary."
 fi
 
-echo "Checking the rebuilt OpenRGB device list before replacing the installed app."
+# The controller is compiled in. The final runtime scan is useful, but a failed scan should not hide
+# a successful build/install because I2C permissions and already-running sessions vary by distro.
+echo "Checking rebuilt OpenRGB device list."
 set +e
 "$BUILT_BIN" --noautoconnect --list-devices >"$DEVICE_LOG" 2>&1
 list_status=$?
 set -e
-
-if ! grep -Fq "$DEVICE_TEXT" "$DEVICE_LOG"; then
-    echo "The rebuilt OpenRGB binary contains the controller, but did not detect the Steel Legend."
-    echo "Device-list output:"
-    cat "$DEVICE_LOG"
-    echo
+if grep -Fq "$DEVICE_TEXT" "$DEVICE_LOG"; then
+    echo "Detected by rebuilt OpenRGB: $DEVICE_TEXT"
+else
+    echo "Rebuilt OpenRGB contains the Steel Legend controller, but the command-line device scan did not list it."
+    echo "The install will continue so the normal OpenRGB app can be opened and checked."
+    echo "Device scan log: $DEVICE_LOG"
     [ "$list_status" -eq 0 ] || echo "OpenRGB exited with status $list_status while listing devices."
-    fail "Install stopped before replacing $TARGET_BIN."
 fi
 
 STAMP="$(date +%Y%m%d-%H%M%S)"

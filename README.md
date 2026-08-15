@@ -4,9 +4,9 @@ Native OpenRGB controller source for the ASRock Radeon RX 9070 XT Steel Legend G
 
 ## What this controller is
 
-This repository contains one native OpenRGB controller folder for the ASRock Radeon RX 9070 XT Steel Legend.
+This repository contains native OpenRGB controller source for the ASRock Radeon RX 9070 XT Steel Legend.
 
-A native OpenRGB controller is source code that gets compiled into OpenRGB. After this folder is added to an OpenRGB source checkout and OpenRGB is rebuilt, the card can be detected as a normal OpenRGB device.
+A native OpenRGB controller is compiled into OpenRGB. After this installer rebuilds OpenRGB with the controller added, OpenRGB can detect the card as a normal OpenRGB device.
 
 This controller talks to the GPU RGB controller over the AMDGPU OEM I2C bus.
 
@@ -30,8 +30,6 @@ Fan         = channel 7
 ## Requirements
 
 OpenRGB must already be installed and must open normally before running this installer.
-
-The Arch/CachyOS installer installs the build packages it needs, rebuilds OpenRGB with this controller, backs up the existing OpenRGB binary, and replaces the normal OpenRGB app binary.
 
 ## Install on Arch, CachyOS, or Arch-based Linux
 
@@ -59,12 +57,16 @@ ASROCK_RX9070XT_I2C_BUS=7 ASROCK_RX9070XT_I2C_ADDR=0x36 bash /tmp/openrgb-asrock
 
 The controller source is not Arch-specific, but the one-command installer is written for Arch/CachyOS.
 
-For other distributions, install OpenRGB build dependencies for your distro first, then either adapt `install.sh` or manually copy this controller folder into an OpenRGB source checkout before rebuilding OpenRGB.
+For other distributions, install OpenRGB build dependencies for your distro first, then either adapt `install.sh` or manually copy this controller source into an OpenRGB source checkout before rebuilding OpenRGB.
 
-The native controller folder is:
+The native controller files are:
 
 ```text
-Controllers/ASRockRX9070XTGPUController
+Controllers/ASRockRX9070XTGPUController/ASRockRX9070XTGPUController.cpp
+Controllers/ASRockRX9070XTGPUController/ASRockRX9070XTGPUController.h
+Controllers/ASRockRX9070XTGPUController/ASRockRX9070XTGPUControllerDetect.cpp
+Controllers/ASRockRX9070XTGPUController/RGBController_ASRockRX9070XTGPU.cpp
+Controllers/ASRockRX9070XTGPUController/RGBController_ASRockRX9070XTGPU.h
 ```
 
 ## Uninstall
