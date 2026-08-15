@@ -12,36 +12,31 @@ This controller matches the tested Steel Legend card by PCI/subsystem ID, then t
 
 ## Requirements
 
-Before using this repository, OpenRGB should already be installed and able to open normally.
+OpenRGB should already be installed and able to open normally.
 
 Check that first:
 
-```bash
+```text
 openrgb --version
 openrgb
 ```
 
-You also need:
+You also need the normal tools required to build OpenRGB from source:
 
 ```text
 git
 qmake
 make
 C++ compiler
-OpenRGB source checkout
 ```
 
-The instructions below use these folders:
+The steps below use one hidden source workspace:
 
 ```text
-~/OpenRGB
-    OpenRGB source code. This is the source tree that gets rebuilt.
-
-~/openrgb-asrock-rx9070xt-steel-legend-controller
-    This controller repository. Its controller folder gets copied into the OpenRGB source tree.
+$HOME/.local/src/openrgb-asrock-steel-legend/
 ```
 
-If your folders are somewhere else, replace the paths.
+Everything cloned or built by these instructions goes inside that folder.
 
 ## Supported hardware
 
@@ -104,58 +99,75 @@ Rainbow
 
 The speed slider is inverted in the controller code so higher OpenRGB speed means faster animation on this GPU.
 
-## Step 1: get the OpenRGB source code
+## Step 1: create a clean source workspace
 
-Clone the tested OpenRGB source version into `~/OpenRGB`:
+This folder is where the OpenRGB source code and this controller source will be placed.
 
-```bash
-cd ~
-git clone https://gitlab.com/CalcProgrammer1/OpenRGB.git OpenRGB
-cd ~/OpenRGB
+```text
+rm -rf "$HOME/.local/src/openrgb-asrock-steel-legend"
+mkdir -p "$HOME/.local/src/openrgb-asrock-steel-legend"
+cd "$HOME/.local/src/openrgb-asrock-steel-legend"
+```
+
+## Step 2: get the tested OpenRGB source code
+
+This downloads the OpenRGB source code into the workspace and checks out the commit this controller was tested with.
+
+```text
+git clone https://gitlab.com/CalcProgrammer1/OpenRGB.git
+cd "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB"
 git checkout 4306603a28c86e91f4dd4f89b41efd3005f0b810
 ```
 
-The commit above is the OpenRGB version this controller was tested with.
+Confirm the checked-out commit:
 
-If you already have `~/OpenRGB`, update or reset it before continuing.
+```text
+git rev-parse HEAD
+```
 
-## Step 2: get this controller source
+Expected result:
 
-Clone this Steel Legend controller repository into your home folder:
+```text
+4306603a28c86e91f4dd4f89b41efd3005f0b810
+```
 
-```bash
-cd ~
+## Step 3: get this Steel Legend controller source
+
+This downloads this controller repository into the same workspace.
+
+```text
+cd "$HOME/.local/src/openrgb-asrock-steel-legend"
 git clone https://github.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller.git
 ```
 
-If you already cloned it before, update it instead:
+## Step 4: copy the controller into the OpenRGB source tree
 
-```bash
-cd ~/openrgb-asrock-rx9070xt-steel-legend-controller
-git pull
-```
+This places the Steel Legend controller folder inside OpenRGB's `Controllers/` folder.
 
-## Step 3: copy the controller into the OpenRGB source tree
-
-Remove any older copy of this controller from the OpenRGB source tree, then copy in the current controller folder:
-
-```bash
-rm -rf ~/OpenRGB/Controllers/ASRockRX9070XTGPUController
-cp -a ~/openrgb-asrock-rx9070xt-steel-legend-controller/Controllers/ASRockRX9070XTGPUController       ~/OpenRGB/Controllers/
+```text
+rm -rf "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB/Controllers/ASRockRX9070XTGPUController"
+cp -a "$HOME/.local/src/openrgb-asrock-steel-legend/openrgb-asrock-rx9070xt-steel-legend-controller/Controllers/ASRockRX9070XTGPUController" "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB/Controllers/"
 ```
 
 OpenRGB's qmake project automatically includes controller source files from the `Controllers/` folder, so no manual `OpenRGB.pro` edit is needed.
 
-## Step 4: rebuild OpenRGB from source
+## Step 5: remove the old test plugin if it was installed
 
-Build a local OpenRGB binary from `~/OpenRGB` with the Steel Legend controller included:
+This native controller replaces the older test plugin approach.
 
-```bash
-cd ~/OpenRGB
+If the old plugin is still installed, OpenRGB may show duplicate devices or crash while loading the stale plugin.
 
-make clean 2>/dev/null || true
+```text
+rm -f "$HOME/.config/OpenRGB/plugins/libOpenRGBASRockRX9070XTPlugin.so"
+```
+
+## Step 6: rebuild OpenRGB from source
+
+This builds a local OpenRGB binary from the source tree that now contains the Steel Legend controller.
+
+```text
+cd "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB"
 rm -f OpenRGB openrgb Makefile .qmake.stash
-
 qmake OpenRGB.pro
 make
 ```
@@ -163,15 +175,15 @@ make
 The rebuilt binary should be:
 
 ```text
-~/OpenRGB/OpenRGB
+$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB/OpenRGB
 ```
 
-## Step 5: run the rebuilt OpenRGB
+## Step 7: run the rebuilt OpenRGB
 
-Run the local source-built OpenRGB binary:
+This starts the OpenRGB binary that was just built from source.
 
-```bash
-cd ~/OpenRGB
+```text
+cd "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB"
 ./OpenRGB
 ```
 
@@ -185,49 +197,53 @@ ARGB Header, Top / Side, and Fan appear as zones
 
 If `./OpenRGB` does not exist, check what was built:
 
-```bash
-cd ~/OpenRGB
+```text
+cd "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB"
 find . -maxdepth 1 -type f -executable \( -name 'OpenRGB' -o -name 'openrgb' \) -print
 ```
 
 If the binary is named `openrgb` instead, run:
 
-```bash
+```text
 ./openrgb
 ```
 
-## Optional: make a separate local launcher
+## Optional: create a user-local launcher
 
-Copy the rebuilt OpenRGB binary to a separate local command named `openrgb-asrock`:
+This copies the rebuilt OpenRGB binary to a user-local command named `openrgb-asrock`.
 
-```bash
-mkdir -p ~/.local/bin
-cp ~/OpenRGB/OpenRGB ~/.local/bin/openrgb-asrock
-chmod +x ~/.local/bin/openrgb-asrock
+```text
+mkdir -p "$HOME/.local/bin"
+cp "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB/OpenRGB" "$HOME/.local/bin/openrgb-asrock"
+chmod +x "$HOME/.local/bin/openrgb-asrock"
 ```
 
 Run it with:
 
-```bash
+```text
 openrgb-asrock
 ```
 
-If your build produced `~/OpenRGB/openrgb` instead, copy that file instead:
+If your build produced `openrgb` instead of `OpenRGB`, copy that file instead:
 
-```bash
-mkdir -p ~/.local/bin
-cp ~/OpenRGB/openrgb ~/.local/bin/openrgb-asrock
-chmod +x ~/.local/bin/openrgb-asrock
+```text
+mkdir -p "$HOME/.local/bin"
+cp "$HOME/.local/src/openrgb-asrock-steel-legend/OpenRGB/openrgb" "$HOME/.local/bin/openrgb-asrock"
+chmod +x "$HOME/.local/bin/openrgb-asrock"
 ```
 
-## Remove the old plugin if you tested it
+## Cleanup
 
-This native controller replaces the older test plugin approach.
+Remove the source workspace:
 
-If you previously installed the plugin, remove it before running this native build. Otherwise OpenRGB may show duplicate devices or crash while loading the stale plugin.
+```text
+rm -rf "$HOME/.local/src/openrgb-asrock-steel-legend"
+```
 
-```bash
-rm -f ~/.config/OpenRGB/plugins/libOpenRGBASRockRX9070XTPlugin.so
+Remove the optional user-local launcher:
+
+```text
+rm -f "$HOME/.local/bin/openrgb-asrock"
 ```
 
 ## Check the detector
@@ -236,7 +252,7 @@ Use this if the Steel Legend device does not appear.
 
 This command shows the AMD GPU and subsystem ID:
 
-```bash
+```text
 lspci -Dnn -vv -d 1002:7550 | grep -Ei 'VGA|Display|Subsystem|Kernel driver'
 ```
 
