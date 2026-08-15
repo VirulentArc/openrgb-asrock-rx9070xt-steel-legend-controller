@@ -1,3 +1,2 @@
-GPL-2.0-or-later
-
-This controller source is intended to be used with OpenRGB and follows the OpenRGB project license style used by the source files.
+This repository contains source intended to be built into OpenRGB.
+OpenRGB is licensed under GPL-2.0-or-later.

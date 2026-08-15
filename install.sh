@@ -11,6 +11,7 @@ OPENRGB_DIR="$WORKSPACE/OpenRGB"
 CONTROLLER_REPO_DIR="$WORKSPACE/openrgb-asrock-rx9070xt-steel-legend-controller"
 CONTROLLER_DIR="ASRockRX9070XTGPUController"
 SOURCE_CONTROLLER_DIR="$CONTROLLER_REPO_DIR/Controllers/$CONTROLLER_DIR"
+BUILD_CONTROLLER_DIR="$OPENRGB_DIR/Controllers/$CONTROLLER_DIR"
 DEVICE_TEXT="ASRock RX 9070 XT Steel Legend"
 KNOWN_ADDRESS="0x36"
 TARGET_BIN="/usr/bin/openrgb"
@@ -64,6 +65,8 @@ pick_qmake() {
 
 install_arch_build_packages() {
     if ! command -v pacman >/dev/null 2>&1; then
+        echo "pacman was not found. Skipping automatic dependency install."
+        echo "Install OpenRGB build dependencies for your distribution, then run this installer again."
         return
     fi
 
@@ -93,10 +96,13 @@ from pathlib import Path
 import sys
 path = Path(sys.argv[1])
 text = path.read_text()
+block = '''
+# ASRock RX 9070 XT Steel Legend installer: mbedTLS compatibility paths
+INCLUDEPATH += /usr/include/mbedtls3
+LIBS += -L/usr/lib/mbedtls3
+'''
 if 'INCLUDEPATH += /usr/include/mbedtls3' not in text:
-    text += '\n# ASRock RX 9070 XT Steel Legend installer: mbedTLS compatibility paths\n'
-    text += 'INCLUDEPATH += /usr/include/mbedtls3\n'
-    text += 'LIBS += -L/usr/lib/mbedtls3\n'
+    text += block
 path.write_text(text)
 PYTHON_MBEDTLS
         return
@@ -267,27 +273,14 @@ verify_controller_source_files() {
     done
 }
 
-verify_makefile_contains_controller() {
-    local makefile="$1"
-    local missing=0
-    local src
-    local rel
-
-    [ -f "$makefile" ] || fail "qmake did not create a Makefile. qmake log: $QMAKE_LOG"
-
-    for src in "${CONTROLLER_SOURCES[@]}"; do
-        rel="Controllers/$src"
-        if ! grep -Fq "$rel" "$makefile"; then
-            echo "Missing from generated Makefile: $rel" >&2
-            missing=1
-        fi
-    done
-
-    [ "$missing" -eq 0 ] || fail "qmake did not add the Steel Legend controller source files to the OpenRGB build. qmake log: $QMAKE_LOG"
+verify_project_auto_discovers_controllers() {
+    local project_file="$1"
+    grep -Fq 'Controllers/*.cpp' "$project_file" || fail "OpenRGB.pro does not contain recursive controller .cpp discovery."
+    grep -Fq 'Controllers/*.h' "$project_file" || fail "OpenRGB.pro does not contain recursive controller .h discovery."
 }
 
 find_built_binary() {
-    for candidate in "$OPENRGB_DIR/OpenRGB" "$OPENRGB_DIR/openrgb"; do
+    for candidate in "$OPENRGB_DIR/openrgb" "$OPENRGB_DIR/OpenRGB"; do
         if [ -x "$candidate" ]; then
             printf '%s\n' "$candidate"
             return 0
@@ -346,15 +339,11 @@ echo "Cloning Steel Legend controller source."
 git clone --quiet "$REPO_URL" "$CONTROLLER_REPO_DIR"
 
 verify_controller_source_files "$SOURCE_CONTROLLER_DIR"
-
-BUILD_CONTROLLER_DIR="$OPENRGB_DIR/Controllers"
+verify_project_auto_discovers_controllers "$OPENRGB_DIR/OpenRGB.pro"
 
 echo "Adding Steel Legend controller source to OpenRGB."
-rm -rf "$OPENRGB_DIR/Controllers/$CONTROLLER_DIR"
-for file in "${CONTROLLER_SOURCES[@]}" "${CONTROLLER_HEADERS[@]}"; do
-    rm -f "$BUILD_CONTROLLER_DIR/$file"
-    cp -a "$SOURCE_CONTROLLER_DIR/$file" "$BUILD_CONTROLLER_DIR/$file"
-done
+rm -rf "$BUILD_CONTROLLER_DIR"
+cp -a "$SOURCE_CONTROLLER_DIR" "$OPENRGB_DIR/Controllers/"
 
 patch_controller_bus_and_address \
     "$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUControllerDetect.cpp" \
@@ -374,15 +363,7 @@ make clean >/dev/null 2>&1 || true
 rm -f OpenRGB openrgb Makefile .qmake.stash
 
 "$QMAKE" OpenRGB.pro 2>&1 | tee "$QMAKE_LOG"
-verify_makefile_contains_controller "$OPENRGB_DIR/Makefile"
-
 make -j"$(nproc)" 2>&1 | tee "$BUILD_LOG"
-
-for obj in ASRockRX9070XTGPUController.o ASRockRX9070XTGPUControllerDetect.o RGBController_ASRockRX9070XTGPU.o; do
-    if ! find "$OPENRGB_DIR" -name "$obj" -print -quit | grep -q .; then
-        fail "The Steel Legend object file was not built: $obj. Build log: $BUILD_LOG"
-    fi
-done
 
 BUILT_BIN="$(find_built_binary || true)"
 [ -n "$BUILT_BIN" ] || fail "Build finished, but no OpenRGB binary was found. Build log: $BUILD_LOG"

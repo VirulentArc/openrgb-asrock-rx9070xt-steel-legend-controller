@@ -25,7 +25,6 @@ __attribute__((used))
 const char ASROCK_RX9070XT_STEEL_LEGEND_BUILD_MARKER[] = "ASRock RX 9070 XT Steel Legend";
 }
 
-
 namespace
 {
     static constexpr uint8_t ASROCK_RX9070XT_RGB_ADDRESS = 0x36;
