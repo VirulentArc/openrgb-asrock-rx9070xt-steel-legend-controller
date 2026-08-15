@@ -10,24 +10,15 @@ BACKUP_DIR="$STATE_DIR/backups"
 OPENRGB_DIR="$WORKSPACE/OpenRGB"
 CONTROLLER_REPO_DIR="$WORKSPACE/openrgb-asrock-rx9070xt-steel-legend-controller"
 CONTROLLER_DIR="ASRockRX9070XTGPUController"
-CONTROLLER_SOURCES=(
-    "ASRockRX9070XTGPUController.cpp"
-    "ASRockRX9070XTGPUControllerDetect.cpp"
-    "RGBController_ASRockRX9070XTGPU.cpp"
-)
-CONTROLLER_HEADERS=(
-    "ASRockRX9070XTGPUController.h"
-    "RGBController_ASRockRX9070XTGPU.h"
-)
 DEVICE_TEXT="ASRock RX 9070 XT Steel Legend"
 KNOWN_ADDRESS="0x36"
-QMAKE=""
 TARGET_BIN="/usr/bin/openrgb"
-DEVICE_LOG="/tmp/openrgb-asrock-devices.log"
 QMAKE_LOG="/tmp/openrgb-asrock-qmake.log"
 BUILD_LOG="/tmp/openrgb-asrock-build.log"
-MBEDTLS_INCLUDE_FLAG=""
-MBEDTLS_LIBRARY_FLAG=""
+DEVICE_LOG="/tmp/openrgb-asrock-devices.log"
+QMAKE=""
+BUS_ID=""
+I2C_ADDR=""
 
 fail() {
     echo "ERROR: $*" >&2
@@ -50,10 +41,9 @@ pick_qmake() {
     elif command -v qmake-qt5 >/dev/null 2>&1; then
         QMAKE="qmake-qt5"
     else
-        fail "Qt5 qmake was not found. Install qt5-base/qt5-tools, then run this installer again."
+        fail "Qt5 qmake was not found."
     fi
 
-    local qt_version
     qt_version="$($QMAKE -query QT_VERSION 2>/dev/null || true)"
     case "$qt_version" in
         5.*) ;;
@@ -61,26 +51,48 @@ pick_qmake() {
     esac
 }
 
-configure_mbedtls_build_flags() {
+install_arch_build_packages() {
+    if ! command -v pacman >/dev/null 2>&1; then
+        return
+    fi
+
+    echo "Installing required build packages."
+    sudo pacman -S --needed --noconfirm \
+        base-devel git pkgconf qt5-base qt5-tools libusb hidapi i2c-tools
+
+    if pacman -Si mbedtls3 >/dev/null 2>&1; then
+        sudo pacman -S --needed --noconfirm mbedtls3
+    else
+        sudo pacman -S --needed --noconfirm mbedtls
+    fi
+}
+
+patch_openrgb_mbedtls_paths() {
+    local project_file="$1"
+
     if [ -f /usr/include/mbedtls/ctr_drbg.h ]; then
-        MBEDTLS_INCLUDE_FLAG=""
-        MBEDTLS_LIBRARY_FLAG=""
         echo "Using mbedTLS headers from /usr/include."
         return
     fi
 
     if [ -f /usr/include/mbedtls3/mbedtls/ctr_drbg.h ]; then
-        MBEDTLS_INCLUDE_FLAG="-I/usr/include/mbedtls3"
-        MBEDTLS_LIBRARY_FLAG="-L/usr/lib/mbedtls3"
-        export PKG_CONFIG_PATH="/usr/lib/mbedtls3/pkgconfig:${PKG_CONFIG_PATH:-}"
         echo "Using mbedTLS 3 compatibility headers from /usr/include/mbedtls3."
+        python3 - "$project_file" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace('/usr/include/mbedtls/', '/usr/include/mbedtls3/')
+text = text.replace('-L/usr/lib/mbedtls/', '-L/usr/lib/mbedtls3/')
+path.write_text(text)
+PY
         return
     fi
 
     echo "Checked for:"
     echo "  /usr/include/mbedtls/ctr_drbg.h"
     echo "  /usr/include/mbedtls3/mbedtls/ctr_drbg.h"
-    fail "mbedTLS 3 headers were not found. Install mbedtls3, then run this installer again."
+    fail "mbedTLS headers were not found."
 }
 
 normalize_bus() {
@@ -146,9 +158,7 @@ detect_bus_and_address() {
         bus="$(normalize_bus "$manual_bus")"
     else
         mapfile -t oem_busses < <(find_oem_busses)
-        if [ "${#oem_busses[@]}" -eq 0 ]; then
-            fail "No AMDGPU OEM I2C bus was found."
-        fi
+        [ "${#oem_busses[@]}" -gt 0 ] || fail "No AMDGPU OEM I2C bus was found."
 
         for candidate_bus in "${oem_busses[@]}"; do
             if address_is_on_bus "$candidate_bus" "$KNOWN_ADDRESS"; then
@@ -158,8 +168,7 @@ detect_bus_and_address() {
         done
 
         if [ -z "$bus" ]; then
-            echo "AMDGPU OEM I2C bus was found, but address $KNOWN_ADDRESS was not detected on it."
-            echo
+            echo "AMDGPU OEM I2C bus was found, but address $KNOWN_ADDRESS was not detected."
             for candidate_bus in "${oem_busses[@]}"; do
                 print_i2c_bus "$candidate_bus"
             done
@@ -182,168 +191,73 @@ detect_bus_and_address() {
     I2C_ADDR="$addr"
 }
 
-patch_controller_source() {
+patch_controller_bus_and_address() {
     local detect_file="$1"
     local header_file="$2"
-    local controller_file="$3"
-    local bus="$4"
-    local addr="$5"
+    local bus="$3"
+    local addr="$4"
 
-    python3 - "$detect_file" "$header_file" "$controller_file" "$bus" "$addr" <<'PYTHON_PATCH_SOURCE'
+    python3 - "$detect_file" "$header_file" "$bus" "$addr" <<'PY'
 from pathlib import Path
 import re
 import sys
 
 detect_path = Path(sys.argv[1])
 header_path = Path(sys.argv[2])
-controller_path = Path(sys.argv[3])
-bus = sys.argv[4]
-addr = sys.argv[5]
+bus = sys.argv[3]
+addr = sys.argv[4]
 
 detect_text = detect_path.read_text()
-detect_text, bus_count = re.subn(
-    r'(ASROCK_RX9070XT_TESTED_BUS_ID\s*=\s*)\d+',
+detect_text, count = re.subn(
+    r'(ASROCK_RX9070XT_TEST_BUS_ID\s*=\s*)\d+',
     r'\g<1>' + bus,
     detect_text,
     count=1,
 )
-if bus_count != 1:
-    print(f"Could not set bus number in {detect_path}")
+if count != 1:
+    print(f"Could not patch bus ID in {detect_path}")
     sys.exit(1)
 detect_path.write_text(detect_text)
 
 header_text = header_path.read_text()
-header_text, addr_count = re.subn(
+header_text, count = re.subn(
     r'(I2C_ADDRESS\s*=\s*)0x[0-9A-Fa-f]+',
     r'\g<1>' + addr,
     header_text,
     count=1,
 )
-if addr_count != 1:
-    print(f"Could not set I2C address in {header_path}")
+if count != 1:
+    print(f"Could not patch I2C address in {header_path}")
     sys.exit(1)
 header_path.write_text(header_text)
-
-# The source already uses I2C_ADDRESS in the displayed location.
-PYTHON_PATCH_SOURCE
-}
-
-
-patch_openrgb_project_file() {
-    local project_file="$1"
-
-    python3 - "$project_file" "$CONTROLLER_DIR" <<'PYTHON_PATCH_PROJECT'
-from pathlib import Path
-import re
-import sys
-
-project_path = Path(sys.argv[1])
-controller_dir = sys.argv[2]
-text = project_path.read_text()
-
-headers = [
-    f"Controllers/{controller_dir}/ASRockRX9070XTGPUController.h",
-    f"Controllers/{controller_dir}/RGBController_ASRockRX9070XTGPU.h",
-]
-sources = [
-    f"Controllers/{controller_dir}/ASRockRX9070XTGPUController.cpp",
-    f"Controllers/{controller_dir}/ASRockRX9070XTGPUControllerDetect.cpp",
-    f"Controllers/{controller_dir}/RGBController_ASRockRX9070XTGPU.cpp",
-]
-include_path = f"Controllers/{controller_dir}"
-
-# Remove any older appended installer block from previous package versions.
-text = re.sub(
-    r"\n?# BEGIN ASRock RX 9070 XT Steel Legend controller.*?# END ASRock RX 9070 XT Steel Legend controller\n?",
-    "\n",
-    text,
-    flags=re.S,
-)
-
-# Remove any previous direct entries so re-running the installer is clean.
-for entry in headers + sources + [include_path]:
-    text = re.sub(rf"\n\s*{re.escape(entry)}\s*\\?", "", text)
-
-# Insert directly into the main OpenRGB lists. This is intentionally not an
-# appended block at the end of the file. The older appended-block approach was
-# too easy to appear in the Makefile through INCLUDEPATH while still not proving
-# the controller objects were part of the target link.
-def insert_after_marker(text, marker, entries):
-    marker_re = re.escape(marker)
-    m = re.search(marker_re, text)
-    if not m:
-        raise SystemExit(f"Could not find OpenRGB.pro marker: {marker}")
-    insert = "".join(f"    {entry} \\\n" for entry in entries)
-    return text[:m.end()] + "\n" + insert.rstrip("\n") + text[m.end():]
-
-text = insert_after_marker(text, "$$CONTROLLER_INCLUDES                                                                       \\", [include_path])
-text = insert_after_marker(text, "$$CONTROLLER_H                                                                              \\", headers)
-text = insert_after_marker(text, "$$CONTROLLER_CPP                                                                            \\", sources)
-
-project_path.write_text(text)
-PYTHON_PATCH_PROJECT
+PY
 }
 
 verify_controller_source_files() {
     local dir="$1"
-    local file
-
-    [ -d "$dir" ] || fail "Controller source folder not found: $dir"
-
-    for file in "${CONTROLLER_SOURCES[@]}" "${CONTROLLER_HEADERS[@]}"; do
+    for file in \
+        ASRockRX9070XTGPUController.cpp \
+        ASRockRX9070XTGPUController.h \
+        ASRockRX9070XTGPUControllerDetect.cpp \
+        RGBController_ASRockRX9070XTGPU.cpp \
+        RGBController_ASRockRX9070XTGPU.h
+    do
         [ -f "$dir/$file" ] || fail "Missing controller source file: $dir/$file"
     done
 }
 
-verify_makefile_contains_controller() {
-    local makefile="$1"
-    local missing=0
-    local src
-
-    [ -f "$makefile" ] || fail "qmake did not create a Makefile. qmake log: $QMAKE_LOG"
-
-    for src in "${CONTROLLER_SOURCES[@]}"; do
-        if ! grep -Fq "$CONTROLLER_DIR/$src" "$makefile"; then
-            echo "Missing from generated Makefile: $CONTROLLER_DIR/$src" >&2
-            missing=1
+find_built_binary() {
+    for candidate in "$OPENRGB_DIR/openrgb" "$OPENRGB_DIR/OpenRGB"; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
         fi
     done
-
-    [ "$missing" -eq 0 ] || fail "qmake did not add the Steel Legend controller source files to the OpenRGB build. qmake log: $QMAKE_LOG"
-}
-
-verify_controller_objects_built() {
-    local missing=0
-    local base
-
-    for src in "${CONTROLLER_SOURCES[@]}"; do
-        base="${src%.cpp}"
-        if ! find "$OPENRGB_DIR" -type f \( -name "$base.o" -o -name "$base.obj" \) | grep -q .; then
-            echo "Missing built object for: $src" >&2
-            missing=1
-        fi
-    done
-
-    [ "$missing" -eq 0 ] || fail "The Steel Legend source files were in the Makefile, but their object files were not built. Build log: $BUILD_LOG"
-}
-
-install_arch_build_packages() {
-    if ! command -v pacman >/dev/null 2>&1; then
-        return
-    fi
-
-    echo "Installing required build packages."
-    sudo pacman -S --needed --noconfirm base-devel git qt5-base qt5-tools i2c-tools
-
-    if pacman -Si mbedtls3 >/dev/null 2>&1; then
-        sudo pacman -S --needed --noconfirm mbedtls3
-    else
-        sudo pacman -S --needed --noconfirm mbedtls
-    fi
+    return 1
 }
 
 if [ "${EUID:-$(id -u)}" -eq 0 ]; then
-    fail "Do not run this script with sudo. Run the install command as your normal user."
+    fail "Do not run this script with sudo. Run it as your normal user."
 fi
 
 cd /tmp
@@ -362,8 +276,6 @@ install_arch_build_packages
 
 need_command i2cdetect
 pick_qmake
-configure_mbedtls_build_flags
-
 [ -x "$TARGET_BIN" ] || fail "OpenRGB is not installed at $TARGET_BIN. Install OpenRGB first, confirm it opens, then run this installer again."
 
 stop_openrgb
@@ -395,9 +307,6 @@ git clone --quiet "$REPO_URL" "$CONTROLLER_REPO_DIR"
 
 SOURCE_CONTROLLER_DIR="$CONTROLLER_REPO_DIR/Controllers/$CONTROLLER_DIR"
 BUILD_CONTROLLER_DIR="$OPENRGB_DIR/Controllers/$CONTROLLER_DIR"
-BUILD_DETECT_FILE="$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUControllerDetect.cpp"
-BUILD_HEADER_FILE="$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUController.h"
-BUILD_CONTROLLER_FILE="$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUController.cpp"
 
 verify_controller_source_files "$SOURCE_CONTROLLER_DIR"
 
@@ -405,41 +314,31 @@ echo "Adding Steel Legend controller source to OpenRGB."
 rm -rf "$BUILD_CONTROLLER_DIR"
 cp -a "$SOURCE_CONTROLLER_DIR" "$OPENRGB_DIR/Controllers/"
 
-patch_controller_source "$BUILD_DETECT_FILE" "$BUILD_HEADER_FILE" "$BUILD_CONTROLLER_FILE" "$BUS_ID" "$I2C_ADDR"
-patch_openrgb_project_file "$OPENRGB_DIR/OpenRGB.pro"
+patch_controller_bus_and_address \
+    "$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUControllerDetect.cpp" \
+    "$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUController.h" \
+    "$BUS_ID" \
+    "$I2C_ADDR"
+
+patch_openrgb_mbedtls_paths "$OPENRGB_DIR/OpenRGB.pro"
 
 echo "Rebuilding OpenRGB."
 echo "Build logs:"
 echo "  $QMAKE_LOG"
 echo "  $BUILD_LOG"
-echo
 cd "$OPENRGB_DIR"
 make clean >/dev/null 2>&1 || true
 rm -f OpenRGB openrgb Makefile .qmake.stash
 
-QMAKE_ARGS=(OpenRGB.pro)
-if [ -n "$MBEDTLS_INCLUDE_FLAG" ]; then
-    QMAKE_ARGS+=("QMAKE_CFLAGS+=$MBEDTLS_INCLUDE_FLAG")
-    QMAKE_ARGS+=("QMAKE_CXXFLAGS+=$MBEDTLS_INCLUDE_FLAG")
-fi
-if [ -n "$MBEDTLS_LIBRARY_FLAG" ]; then
-    QMAKE_ARGS+=("QMAKE_LFLAGS+=$MBEDTLS_LIBRARY_FLAG")
-    QMAKE_ARGS+=("LIBS+=$MBEDTLS_LIBRARY_FLAG")
+"$QMAKE" OpenRGB.pro 2>&1 | tee "$QMAKE_LOG"
+
+if ! grep -Fq "$CONTROLLER_DIR/ASRockRX9070XTGPUController.cpp" Makefile; then
+    fail "qmake did not include the Steel Legend controller source. qmake log: $QMAKE_LOG"
 fi
 
-"$QMAKE" "${QMAKE_ARGS[@]}" 2>&1 | tee "$QMAKE_LOG"
-verify_makefile_contains_controller "$OPENRGB_DIR/Makefile"
 make -j"$(nproc)" 2>&1 | tee "$BUILD_LOG"
-verify_controller_objects_built
 
-BUILT_BIN=""
-for candidate in "$OPENRGB_DIR/OpenRGB" "$OPENRGB_DIR/openrgb"; do
-    if [ -x "$candidate" ]; then
-        BUILT_BIN="$candidate"
-        break
-    fi
-done
-
+BUILT_BIN="$(find_built_binary || true)"
 [ -n "$BUILT_BIN" ] || fail "Build finished, but no OpenRGB binary was found. Build log: $BUILD_LOG"
 
 if ! strings "$BUILT_BIN" | grep -Fq "$DEVICE_TEXT"; then

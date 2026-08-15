@@ -14,16 +14,13 @@
 #include "RGBController_ASRockRX9070XTGPU.h"
 #include "i2c_smbus.h"
 
-#include <cstdint>
 #include <string>
 #include <vector>
 
-extern "C" const char ASROCK_RX9070XT_STEEL_LEGEND_OPENRGB_CONTROLLER_MARKER[] __attribute__((used)) = "ASRock RX 9070 XT Steel Legend";
-
 namespace
 {
-    static constexpr uint8_t ASROCK_RX9070XT_RGB_ADDRESS = ASRockRX9070XTGPUController::I2C_ADDRESS;
-    static constexpr int     ASROCK_RX9070XT_TESTED_BUS_ID = 7;
+    static constexpr uint8_t ASROCK_RX9070XT_RGB_ADDRESS = 0x36;
+    static constexpr int     ASROCK_RX9070XT_TEST_BUS_ID = 7;
 }
 
 void DetectASRockRX9070XTGPUControllers(std::vector<i2c_smbus_interface*>& busses)
@@ -35,7 +32,11 @@ void DetectASRockRX9070XTGPUControllers(std::vector<i2c_smbus_interface*>& busse
             continue;
         }
 
-        if(bus->bus_id != ASROCK_RX9070XT_TESTED_BUS_ID)
+        // Local native test detector:
+        // The known-good controller was found on OpenRGB I2C bus 7 at address 0x36.
+        // For an upstream-ready detector, replace this generic I2C detector with an
+        // I2C PCI detector registered against the card's exact PCI/subsystem IDs.
+        if(bus->bus_id != ASROCK_RX9070XT_TEST_BUS_ID)
         {
             continue;
         }

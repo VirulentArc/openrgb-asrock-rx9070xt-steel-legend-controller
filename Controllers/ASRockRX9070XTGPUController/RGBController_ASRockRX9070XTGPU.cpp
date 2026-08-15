@@ -51,7 +51,7 @@ RGBController_ASRockRX9070XTGPU::RGBController_ASRockRX9070XTGPU(ASRockRX9070XTG
     name        = "ASRock RX 9070 XT Steel Legend";
     vendor      = "ASRock";
     description = "ASRock RX 9070 XT Steel Legend GPU RGB Controller";
-    version     = "0.3.7-native";
+    version     = "0.3.8-native";
     serial      = "";
     location    = controller ? controller->GetLocation() : "I2C bus unavailable";
     type        = DEVICE_TYPE_GPU;
