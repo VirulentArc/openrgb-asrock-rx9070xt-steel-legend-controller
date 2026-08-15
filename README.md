@@ -4,11 +4,15 @@ Native OpenRGB controller source for the ASRock Radeon RX 9070 XT Steel Legend G
 
 ## Requirements
 
-OpenRGB must already be installed and able to open normally.
+OpenRGB must already be installed and able to open normally before this controller is installed.
 
-On Arch/CachyOS, the installer will install the build packages it needs.
+The installer rebuilds OpenRGB from source with this controller added, then replaces the normal OpenRGB binary with the rebuilt one.
 
-## Install
+## Linux distro support
+
+### Arch / CachyOS / Arch-based
+
+This is the main supported installer path. It installs the required build packages with `pacman`, builds OpenRGB, verifies the Steel Legend controller is present, and replaces the normal OpenRGB app binary.
 
 Run this command:
 
@@ -23,6 +27,79 @@ The Steel Legend should appear as:
 ```text
 ASRock RX 9070 XT Steel Legend
 ```
+
+### Debian / Ubuntu
+
+Install the OpenRGB build dependencies first:
+
+```bash
+sudo apt update
+sudo apt install git build-essential qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools qttools5-dev-tools libusb-1.0-0-dev libhidapi-dev pkgconf libmbedtls-dev i2c-tools python3 curl
+```
+
+Then run the controller installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh -o /tmp/openrgb-asrock-steel-legend-install.sh && bash /tmp/openrgb-asrock-steel-legend-install.sh
+```
+
+Then open OpenRGB normally.
+
+### Fedora
+
+Install the OpenRGB build dependencies first:
+
+```bash
+sudo dnf install automake gcc-c++ make git hidapi-devel libusbx-devel mbedtls-devel pkgconf qt5-qtbase-devel qt5-linguist i2c-tools python3 curl
+```
+
+Then run the controller installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh -o /tmp/openrgb-asrock-steel-legend-install.sh && bash /tmp/openrgb-asrock-steel-legend-install.sh
+```
+
+Then open OpenRGB normally.
+
+### openSUSE Tumbleweed / Leap
+
+This path is best effort. Package names can vary between Leap and Tumbleweed.
+
+Install the likely OpenRGB build dependencies first:
+
+```bash
+sudo zypper install git gcc-c++ make libqt5-qtbase-devel libqt5-linguist-devel libusb-1_0-devel libhidapi-devel mbedtls-devel pkgconf-pkg-config i2c-tools python3 curl
+```
+
+Then run the controller installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh -o /tmp/openrgb-asrock-steel-legend-install.sh && bash /tmp/openrgb-asrock-steel-legend-install.sh
+```
+
+Then open OpenRGB normally.
+
+### Other Linux distributions
+
+Install the equivalent packages for your distribution:
+
+```text
+Git
+C++ build tools
+make
+Qt5 base development files
+Qt5 qmake
+Qt5 linguist/tools
+libusb 1.0 development files
+hidapi development files
+mbedTLS development files
+pkg-config or pkgconf
+i2c-tools
+python3
+curl
+```
+
+Then run the same installer command.
 
 ## Manual bus/address override
 
