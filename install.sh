@@ -206,7 +206,7 @@ need_command sed
 
 if command -v pacman >/dev/null 2>&1; then
     echo "Installing required build packages."
-    sudo pacman -S --needed base-devel git qt5-base qt5-tools mbedtls i2c-tools
+    sudo pacman -S --needed --noconfirm base-devel git qt5-base qt5-tools mbedtls i2c-tools
 fi
 
 need_command i2cdetect
