@@ -2,119 +2,79 @@
 
 Native OpenRGB controller source for the ASRock Radeon RX 9070 XT Steel Legend GPU RGB controller.
 
-## What this is
+## Requirements
 
-This adds ASRock Radeon RX 9070 XT Steel Legend support to OpenRGB.
-
-The installer rebuilds OpenRGB with this native controller, backs up the current OpenRGB binary, and replaces the normal OpenRGB binary with the rebuilt one.
-
-After install, open OpenRGB normally. The card should appear as:
-
-```text
-ASRock RX 9070 XT Steel Legend
-```
+- ASRock Radeon RX 9070 XT Steel Legend.
+- Arch Linux or CachyOS.
+- OpenRGB already installed and able to open normally.
 
 ## Install
 
 Run this command:
 
 ```bash
-cd /tmp && curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh | bash
 ```
 
 Then open OpenRGB normally.
 
-That is the install process.
-
-## Requirements
-
-OpenRGB must already be installed and able to open normally before running this installer.
-
-The system also needs the normal OpenRGB build tools:
+The card should appear as:
 
 ```text
-git
-qmake
-make
-C++ compiler
-python3
-strings
+ASRock RX 9070 XT Steel Legend
 ```
 
-On Linux, the user must have I2C access. On many distros that means the user is in the `i2c` group.
+## What the installer does
 
-## Different I2C bus
+The installer:
 
-The installer tries to find the AMDGPU OEM I2C bus automatically. If detection fails, it uses the tested Steel Legend default bus `7`.
+1. Installs the build packages needed to compile OpenRGB.
+2. Detects the AMDGPU OEM I2C bus.
+3. Detects the Steel Legend RGB controller address.
+4. Builds OpenRGB with this native controller included.
+5. Checks that the rebuilt OpenRGB can see the Steel Legend.
+6. Backs up the existing OpenRGB binary.
+7. Replaces the normal OpenRGB app binary.
 
-To force a different bus:
+After install, the normal OpenRGB launcher and the normal `openrgb` command use the custom build.
+
+## Manual bus or address override
+
+The installer detects the bus and address automatically.
+
+Only use these if automatic detection fails:
 
 ```bash
-cd /tmp && curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh | env ASROCK_RX9070XT_I2C_BUS=7 bash
+curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh | env ASROCK_RX9070XT_I2C_BUS=7 bash
 ```
-
-Replace `7` with the correct bus number from:
 
 ```bash
-i2cdetect -l
+curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh | env ASROCK_RX9070XT_I2C_BUS=7 ASROCK_RX9070XT_I2C_ADDR=0x36 bash
 ```
 
-## Remove
+## Uninstall
+
+Run this command:
 
 ```bash
-cd /tmp && curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/uninstall.sh | bash
 ```
 
-This restores the backed-up OpenRGB binary if a backup is available.
+This restores the OpenRGB binary that was backed up during install.
 
-## Supported hardware
-
-Tested card:
+## Tested hardware
 
 ```text
-ASRock Radeon RX 9070 XT Steel Legend 16GB
+GPU: ASRock Radeon RX 9070 XT Steel Legend
 RGB I2C address: 0x36
-Tested I2C bus: AMDGPU OEM I2C bus
-```
-
-Known hardware zones:
-
-```text
-3 = ARGB Header
-6 = Top / Side
-7 = Fan
-```
-
-OpenRGB zones:
-
-```text
-ARGB Header
-Top / Side
-Fan
-```
-
-## Modes
-
-```text
-Off
-Static
-Breathing
-Strobe
-RGB Cycle
-Random
-Color Shift
-Visor
-Stacking
-Fill Wave
-Traveling Wave
-Marquee Color
-Marquee Random
-Color Wave
-Rainbow
+Known Steel Legend channels:
+  3 = ARGB Header
+  6 = Top / Side
+  7 = Fan
 ```
 
 ## Notes
 
-This is hardware-mode support only. Direct per-frame LED streaming is not implemented.
+This controller is for the Steel Legend card only.
 
-The old standalone plugin test version should not be used at the same time as this native controller build.
+Do not use this package for the Taichi. The Taichi has a different channel map and needs different controller handling.

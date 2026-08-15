@@ -11,19 +11,20 @@ OPENRGB_DIR="$WORKSPACE/OpenRGB"
 CONTROLLER_REPO_DIR="$WORKSPACE/openrgb-asrock-rx9070xt-steel-legend-controller"
 CONTROLLER_DIR="ASRockRX9070XTGPUController"
 DEVICE_TEXT="ASRock RX 9070 XT Steel Legend"
+KNOWN_ADDRESS="0x36"
+QMAKE=""
+TARGET_BIN="/usr/bin/openrgb"
 DEVICE_LOG="/tmp/openrgb-asrock-devices.log"
+QMAKE_LOG="/tmp/openrgb-asrock-qmake.log"
+BUILD_LOG="/tmp/openrgb-asrock-build.log"
 
-if [ "${EUID:-$(id -u)}" -eq 0 ]; then
-    echo "Do not run this script with sudo."
-    echo "Run the install command as your normal user. The script will ask for sudo when needed."
+fail() {
+    echo "ERROR: $*" >&2
     exit 1
-fi
+}
 
 need_command() {
-    if ! command -v "$1" >/dev/null 2>&1; then
-        echo "Missing required command: $1"
-        exit 1
-    fi
+    command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
 }
 
 stop_openrgb() {
@@ -32,38 +33,196 @@ stop_openrgb() {
     sleep 1
 }
 
+pick_qmake() {
+    if command -v qmake >/dev/null 2>&1; then
+        QMAKE="qmake"
+    elif command -v qmake-qt5 >/dev/null 2>&1; then
+        QMAKE="qmake-qt5"
+    else
+        fail "Qt5 qmake was not found. Install qt5-base/qt5-tools, then run this installer again."
+    fi
+
+    local qt_version
+    qt_version="$($QMAKE -query QT_VERSION 2>/dev/null || true)"
+    case "$qt_version" in
+        5.*) ;;
+        *) fail "$QMAKE is not Qt5 qmake. Found Qt version: ${qt_version:-unknown}" ;;
+    esac
+}
+
+normalize_bus() {
+    local bus="$1"
+    [[ "$bus" =~ ^[0-9]+$ ]] || fail "Invalid I2C bus number: $bus"
+    printf '%s\n' "$bus"
+}
+
+normalize_addr() {
+    local addr="${1,,}"
+    addr="${addr#0x}"
+    [[ "$addr" =~ ^[0-7][0-9a-f]$ ]] || fail "Invalid 7-bit I2C address: $1"
+    printf '0x%s\n' "$addr"
+}
+
+scan_i2c_addresses() {
+    local bus="$1"
+    i2cdetect -y "$bus" 2>/dev/null | awk '
+        NR > 1 && $1 ~ /^[0-7][0-9a-fA-F]:$/ {
+            row = substr($1, 1, 1)
+            for(i = 2; i <= NF; i++) {
+                token = tolower($i)
+                col = i - 2
+                addr = sprintf("0x%s%x", row, col)
+                if(token ~ /^[0-9a-f][0-9a-f]$/ || token == "uu") {
+                    print addr
+                }
+            }
+        }'
+}
+
+address_is_on_bus() {
+    local bus="$1"
+    local addr="$2"
+    scan_i2c_addresses "$bus" | grep -Fxq "$addr"
+}
+
+find_oem_busses() {
+    local name_file bus_name
+    for name_file in /sys/bus/i2c/devices/i2c-*/name; do
+        [ -e "$name_file" ] || continue
+        if grep -qi 'AMDGPU.*OEM' "$name_file"; then
+            bus_name="$(basename "$(dirname "$name_file")")"
+            printf '%s\n' "${bus_name#i2c-}"
+        fi
+    done
+}
+
+detect_bus_and_address() {
+    local manual_bus="${ASROCK_RX9070XT_I2C_BUS:-}"
+    local manual_addr="${ASROCK_RX9070XT_I2C_ADDR:-}"
+    local bus=""
+    local addr=""
+
+    if [ -n "$manual_bus" ]; then
+        bus="$(normalize_bus "$manual_bus")"
+    else
+        mapfile -t oem_busses < <(find_oem_busses)
+        if [ "${#oem_busses[@]}" -eq 0 ]; then
+            fail "No AMDGPU OEM I2C bus was found."
+        fi
+
+        for candidate_bus in "${oem_busses[@]}"; do
+            if address_is_on_bus "$candidate_bus" "$KNOWN_ADDRESS"; then
+                bus="$candidate_bus"
+                break
+            fi
+        done
+
+        if [ -z "$bus" ]; then
+            echo "AMDGPU OEM I2C bus was found, but address $KNOWN_ADDRESS was not detected on it."
+            echo
+            for candidate_bus in "${oem_busses[@]}"; do
+                echo "i2cdetect output for bus $candidate_bus:"
+                i2cdetect -y "$candidate_bus" || true
+                echo
+            done
+            fail "Steel Legend RGB controller address was not detected."
+        fi
+    fi
+
+    if [ -n "$manual_addr" ]; then
+        addr="$(normalize_addr "$manual_addr")"
+    else
+        addr="$KNOWN_ADDRESS"
+    fi
+
+    if ! address_is_on_bus "$bus" "$addr"; then
+        echo "i2cdetect output for bus $bus:"
+        i2cdetect -y "$bus" || true
+        echo
+        fail "Address $addr was not detected on I2C bus $bus."
+    fi
+
+    BUS_ID="$bus"
+    I2C_ADDR="$addr"
+}
+
+patch_controller_source() {
+    local detect_file="$1"
+    local header_file="$2"
+    local bus="$3"
+    local addr="$4"
+
+    python3 - "$detect_file" "$header_file" "$bus" "$addr" <<'PYTHON_PATCH_SOURCE'
+from pathlib import Path
+import re
+import sys
+
+detect_path = Path(sys.argv[1])
+header_path = Path(sys.argv[2])
+bus = sys.argv[3]
+addr = sys.argv[4]
+
+detect_text = detect_path.read_text()
+detect_text, bus_count = re.subn(
+    r'(ASROCK_RX9070XT_TESTED_BUS_ID\s*=\s*)\d+',
+    r'\g<1>' + bus,
+    detect_text,
+    count=1,
+)
+if bus_count != 1:
+    print(f"Could not set bus number in {detect_path}")
+    sys.exit(1)
+detect_path.write_text(detect_text)
+
+header_text = header_path.read_text()
+header_text, addr_count = re.subn(
+    r'(I2C_ADDRESS\s*=\s*)0x[0-9A-Fa-f]+',
+    r'\g<1>' + addr,
+    header_text,
+    count=1,
+)
+if addr_count != 1:
+    print(f"Could not set I2C address in {header_path}")
+    sys.exit(1)
+header_path.write_text(header_text)
+PYTHON_PATCH_SOURCE
+}
+
+if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+    fail "Do not run this script with sudo. Run the install command as your normal user."
+fi
+
+cd /tmp
+
+need_command sudo
 need_command git
-need_command qmake
 need_command make
 need_command strings
 need_command python3
 need_command nproc
 need_command grep
+need_command awk
+need_command sed
 
-if [ -x /usr/bin/openrgb ]; then
-    TARGET_BIN="/usr/bin/openrgb"
-else
-    TARGET_BIN="$(command -v openrgb || true)"
+if command -v pacman >/dev/null 2>&1; then
+    echo "Installing required build packages."
+    sudo pacman -S --needed base-devel git qt5-base qt5-tools mbedtls i2c-tools
 fi
 
-if [ -z "$TARGET_BIN" ]; then
-    echo "OpenRGB is not installed. Install OpenRGB first, confirm it opens, then run this installer again."
-    exit 1
-fi
+need_command i2cdetect
+pick_qmake
 
-if [ ! -e "$TARGET_BIN" ]; then
-    echo "OpenRGB command was found but the target does not exist: $TARGET_BIN"
-    exit 1
-fi
+[ -x "$TARGET_BIN" ] || fail "OpenRGB is not installed at $TARGET_BIN. Install OpenRGB first, confirm it opens, then run this installer again."
+[ -f /usr/include/mbedtls/ctr_drbg.h ] || fail "mbedTLS headers are missing. Install the mbedtls package, then run this installer again."
 
-cd /tmp
-
-echo "Stopping any running OpenRGB process."
 stop_openrgb
 
-echo "Installing custom OpenRGB over: $TARGET_BIN"
-echo "Build workspace: $WORKSPACE"
+echo "Detecting Steel Legend RGB controller."
+detect_bus_and_address
+echo "Detected I2C bus: $BUS_ID"
+echo "Detected I2C address: $I2C_ADDR"
 
+echo "Build workspace: $WORKSPACE"
 sudo rm -rf "$WORKSPACE"
 sudo install -d -m 755 -o "$USER" -g "$(id -gn)" "$WORKSPACE"
 sudo install -d -m 755 "$BACKUP_DIR"
@@ -81,66 +240,27 @@ git clone --quiet "$REPO_URL" "$CONTROLLER_REPO_DIR"
 
 SOURCE_CONTROLLER_DIR="$CONTROLLER_REPO_DIR/Controllers/$CONTROLLER_DIR"
 BUILD_CONTROLLER_DIR="$OPENRGB_DIR/Controllers/$CONTROLLER_DIR"
+BUILD_DETECT_FILE="$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUControllerDetect.cpp"
+BUILD_HEADER_FILE="$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUController.h"
 
-if [ ! -d "$SOURCE_CONTROLLER_DIR" ]; then
-    echo "Controller source folder not found: $SOURCE_CONTROLLER_DIR"
-    exit 1
-fi
-
-BUS_ID="${ASROCK_RX9070XT_I2C_BUS:-}"
-if [ -z "$BUS_ID" ]; then
-    detected_busses=()
-    for name_file in /sys/bus/i2c/devices/i2c-*/name; do
-        [ -e "$name_file" ] || continue
-        if grep -qi 'AMDGPU.*OEM' "$name_file"; then
-            bus_name="$(basename "$(dirname "$name_file")")"
-            detected_busses+=("${bus_name#i2c-}")
-        fi
-    done
-
-    if [ "${#detected_busses[@]}" -eq 1 ]; then
-        BUS_ID="${detected_busses[0]}"
-        echo "Detected AMDGPU OEM I2C bus: $BUS_ID"
-    else
-        BUS_ID="7"
-        echo "Using tested Steel Legend I2C bus: $BUS_ID"
-    fi
-fi
-
-if ! [[ "$BUS_ID" =~ ^[0-9]+$ ]]; then
-    echo "Invalid I2C bus number: $BUS_ID"
-    exit 1
-fi
+[ -d "$SOURCE_CONTROLLER_DIR" ] || fail "Controller source folder not found: $SOURCE_CONTROLLER_DIR"
 
 echo "Adding Steel Legend controller source to OpenRGB."
 rm -rf "$BUILD_CONTROLLER_DIR"
 cp -a "$SOURCE_CONTROLLER_DIR" "$OPENRGB_DIR/Controllers/"
 
-BUILD_DETECT_FILE="$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUControllerDetect.cpp"
-python3 - "$BUILD_DETECT_FILE" "$BUS_ID" <<'PYTHON_PATCH_BUS'
-from pathlib import Path
-import re
-import sys
-path = Path(sys.argv[1])
-bus = sys.argv[2]
-text = path.read_text()
-text, count = re.subn(r'(ASROCK_RX9070XT_TESTED_BUS_ID\s*=\s*)\d+', r'\g<1>' + bus, text, count=1)
-if count != 1:
-    print(f"Could not set bus number in {path}")
-    sys.exit(1)
-path.write_text(text)
-PYTHON_PATCH_BUS
+patch_controller_source "$BUILD_DETECT_FILE" "$BUILD_HEADER_FILE" "$BUS_ID" "$I2C_ADDR"
 
 echo "Rebuilding OpenRGB."
-echo "Build output will be written to:"
-echo "  /tmp/openrgb-asrock-qmake.log"
-echo "  /tmp/openrgb-asrock-build.log"
+echo "Build logs:"
+echo "  $QMAKE_LOG"
+echo "  $BUILD_LOG"
 echo
 cd "$OPENRGB_DIR"
 make clean >/dev/null 2>&1 || true
 rm -f OpenRGB openrgb Makefile .qmake.stash
-qmake OpenRGB.pro 2>&1 | tee /tmp/openrgb-asrock-qmake.log
-make -j"$(nproc)" 2>&1 | tee /tmp/openrgb-asrock-build.log
+"$QMAKE" OpenRGB.pro 2>&1 | tee "$QMAKE_LOG"
+make -j"$(nproc)" 2>&1 | tee "$BUILD_LOG"
 
 BUILT_BIN=""
 for candidate in "$OPENRGB_DIR/OpenRGB" "$OPENRGB_DIR/openrgb"; do
@@ -150,70 +270,50 @@ for candidate in "$OPENRGB_DIR/OpenRGB" "$OPENRGB_DIR/openrgb"; do
     fi
 done
 
-if [ -z "$BUILT_BIN" ]; then
-    echo "Build finished, but no OpenRGB binary was found."
-    echo "Build log: /tmp/openrgb-asrock-build.log"
-    exit 1
-fi
+[ -n "$BUILT_BIN" ] || fail "Build finished, but no OpenRGB binary was found. Build log: $BUILD_LOG"
 
 if ! strings "$BUILT_BIN" | grep -Fq "$DEVICE_TEXT"; then
-    echo "The rebuilt OpenRGB binary does not contain the Steel Legend controller."
-    echo "The controller was not compiled into OpenRGB."
-    echo "Build log: /tmp/openrgb-asrock-build.log"
-    exit 1
+    fail "The rebuilt OpenRGB binary does not contain the Steel Legend controller. Build log: $BUILD_LOG"
+fi
+
+
+echo "Checking the rebuilt OpenRGB device list before replacing the installed app."
+set +e
+"$BUILT_BIN" --noautoconnect --list-devices >"$DEVICE_LOG" 2>&1
+list_status=$?
+set -e
+
+if ! grep -Fq "$DEVICE_TEXT" "$DEVICE_LOG"; then
+    echo "The rebuilt OpenRGB binary contains the controller, but did not detect the Steel Legend."
+    echo "Device-list output:"
+    cat "$DEVICE_LOG"
+    echo
+    [ "$list_status" -eq 0 ] || echo "OpenRGB exited with status $list_status while listing devices."
+    fail "Install stopped before replacing $TARGET_BIN."
 fi
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
-if strings "$TARGET_BIN" 2>/dev/null | grep -Fq "$DEVICE_TEXT"; then
-    echo "Existing OpenRGB binary already appears to be a Steel Legend custom build."
-else
-    BACKUP="$BACKUP_DIR/openrgb.backup.$STAMP"
-    echo "Backing up existing OpenRGB binary to: $BACKUP"
-    sudo cp -a "$TARGET_BIN" "$BACKUP"
-fi
+BACKUP="$BACKUP_DIR/openrgb.backup.$STAMP"
+echo "Backing up current OpenRGB binary to: $BACKUP"
+sudo cp -a "$TARGET_BIN" "$BACKUP"
 
 printf '%s\n' "$TARGET_BIN" | sudo tee "$STATE_DIR/target_path" >/dev/null
 printf '%s\n' "$OPENRGB_COMMIT" | sudo tee "$STATE_DIR/openrgb_commit" >/dev/null
 printf '%s\n' "$BUS_ID" | sudo tee "$STATE_DIR/i2c_bus" >/dev/null
+printf '%s\n' "$I2C_ADDR" | sudo tee "$STATE_DIR/i2c_address" >/dev/null
+printf '%s\n' "$BACKUP" | sudo tee "$STATE_DIR/latest_backup" >/dev/null
 
+echo "Replacing installed OpenRGB app: $TARGET_BIN"
 sudo install -m 755 "$BUILT_BIN" "$TARGET_BIN"
 
 if ! strings "$TARGET_BIN" | grep -Fq "$DEVICE_TEXT"; then
-    echo "Install failed: $TARGET_BIN does not contain the Steel Legend controller after copy."
-    exit 1
+    sudo cp -a "$BACKUP" "$TARGET_BIN"
+    fail "Install failed after copy. The original OpenRGB binary was restored."
 fi
 
-echo "Stopping any running OpenRGB process before launch."
 stop_openrgb
-
-echo "Checking installed OpenRGB device list."
-set +e
-"$TARGET_BIN" --noautoconnect --list-devices >"$DEVICE_LOG" 2>&1
-list_status=$?
-set -e
-
-if grep -Fq "$DEVICE_TEXT" "$DEVICE_LOG"; then
-    echo "Detected: $DEVICE_TEXT"
-else
-    echo "The custom OpenRGB binary was installed, but OpenRGB did not detect the Steel Legend."
-    echo "Device-list output was saved to: $DEVICE_LOG"
-    echo
-    cat "$DEVICE_LOG"
-    echo
-    if [ "$list_status" -ne 0 ]; then
-        echo "OpenRGB exited with status $list_status while listing devices."
-    fi
-    echo "Try forcing the tested bus with:"
-    echo "  cd /tmp && curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh | env ASROCK_RX9070XT_I2C_BUS=7 bash"
-    exit 1
-fi
-
-if [ "$(command -v openrgb || true)" != "$TARGET_BIN" ]; then
-    echo "Warning: the openrgb command resolves to: $(command -v openrgb || true)"
-    echo "Installed custom binary is: $TARGET_BIN"
-fi
 
 echo
 echo "Done."
 echo "Open OpenRGB normally."
-echo "The Steel Legend should appear as: $DEVICE_TEXT"
+echo "The device should appear as: $DEVICE_TEXT"
