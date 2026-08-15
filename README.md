@@ -2,23 +2,46 @@
 
 Native OpenRGB controller source for the ASRock Radeon RX 9070 XT Steel Legend GPU RGB controller.
 
-This is **not** a standalone OpenRGB plugin and it is **not** a drop-in runtime add-on. These files are meant to be copied into an OpenRGB source tree, then OpenRGB must be rebuilt so the GPU is supported as a native OpenRGB device.
+## What this controller is
 
-## Status
+This repository contains one native OpenRGB controller folder for the ASRock Radeon RX 9070 XT Steel Legend.
 
-Tested on Linux with OpenRGB source commit:
+A native OpenRGB controller is source code that gets compiled into OpenRGB. After this folder is added to an OpenRGB source checkout and OpenRGB is rebuilt, the card can be detected as a normal OpenRGB device.
 
-```text
-4306603a28c86e91f4dd4f89b41efd3005f0b810
+This controller matches the tested Steel Legend card by PCI/subsystem ID, then talks to the GPU RGB controller over the AMDGPU OEM I2C bus at address `0x36`.
+
+## Requirements
+
+Before using this repository, OpenRGB should already be installed and able to open normally.
+
+Check that first:
+
+```bash
+openrgb --version
+openrgb
 ```
 
-The controller appears as one native OpenRGB device:
+You also need:
 
 ```text
-ASRock RX 9070 XT Steel Legend
+git
+qmake
+make
+C++ compiler
+OpenRGB source checkout
 ```
 
-This is currently an external native controller source package, not an upstream OpenRGB merge request.
+The instructions below use these folders:
+
+```text
+~/OpenRGB
+    OpenRGB source code. This is the source tree that gets rebuilt.
+
+~/openrgb-asrock-rx9070xt-steel-legend-controller
+    This controller repository. Its controller folder gets copied into the OpenRGB source tree.
+```
+
+If your folders are somewhere else, replace the paths.
 
 ## Supported hardware
 
@@ -39,71 +62,51 @@ Known hardware channels:
 7 = Fan
 ```
 
-The detector is PCI-bound with `REGISTER_I2C_PCI_DETECTOR`, so users should not need to edit their local I2C bus number.
+The detector is tied to the tested PCI/subsystem IDs. Users should not need to edit their I2C bus number.
 
-Do **not** change the PCI IDs, I2C address, channels, or mode values for another GPU unless that card has been tested. Sending incorrect I2C data to RGB hardware can cause broken lighting behavior or a controller freeze.
+Do not change the PCI IDs, I2C address, channel numbers, or mode values for another GPU unless that card has been tested.
 
-## Features
+## What this adds to OpenRGB
 
-- Native OpenRGB GPU device, not a plugin device.
-- PCI-bound I2C detection for the tested Steel Legend card.
-- Zones exposed in OpenRGB:
-  - `ARGB Header`
-  - `Top / Side`
-  - `Fan`
-- Hardware modes:
-  - Off
-  - Static
-  - Breathing
-  - Strobe
-  - RGB Cycle
-  - Random
-  - Color Shift
-  - Visor
-  - Stacking
-  - Fill Wave
-  - Traveling Wave
-  - Marquee Color
-  - Marquee Random
-  - Color Wave
-  - Rainbow
-- Speed slider is inverted so higher OpenRGB speed means faster animation on this controller.
+OpenRGB should show one new device:
 
-## Limitations
-
-OpenRGB's normal mode handling is controller-wide. This controller exposes the GPU channels as zones, but OpenRGB's built-in mode selector does not provide independent per-zone hardware modes.
-
-Direct/effects mode is not implemented. This controller is for the tested hardware modes.
-
-## Remove the old plugin first
-
-If you previously tested the standalone plugin version, remove it before testing this native controller. Otherwise OpenRGB may show duplicate or conflicting devices.
-
-Linux:
-
-```bash
-rm -f ~/.config/OpenRGB/plugins/libOpenRGBASRockRX9070XTPlugin.so
+```text
+ASRock RX 9070 XT Steel Legend
 ```
 
-Windows plugin builds were not provided, but if one was manually installed, remove it from your OpenRGB plugins folder before testing native support.
+OpenRGB zones:
 
-## Linux I2C access
-
-OpenRGB must be able to access the relevant I2C device. On Linux, make sure normal OpenRGB I2C access is working first.
-
-Common checks:
-
-```bash
-sudo modprobe i2c-dev
-groups
-ls -l /dev/i2c-*
+```text
+ARGB Header
+Top / Side
+Fan
 ```
 
-The user running OpenRGB usually needs access to `/dev/i2c-*`, either through distro OpenRGB udev rules, the `i2c` group, or by running OpenRGB with elevated permissions for testing.
+Hardware modes:
 
-## Install into an OpenRGB source tree
+```text
+Off
+Static
+Breathing
+Strobe
+RGB Cycle
+Random
+Color Shift
+Visor
+Stacking
+Fill Wave
+Traveling Wave
+Marquee Color
+Marquee Random
+Color Wave
+Rainbow
+```
 
-Start with an OpenRGB source checkout. The tested source version is:
+The speed slider is inverted in the controller code so higher OpenRGB speed means faster animation on this GPU.
+
+## Step 1: get the OpenRGB source code
+
+Clone the tested OpenRGB source version into `~/OpenRGB`:
 
 ```bash
 cd ~
@@ -112,26 +115,40 @@ cd ~/OpenRGB
 git checkout 4306603a28c86e91f4dd4f89b41efd3005f0b810
 ```
 
-Clone this controller repository separately:
+The commit above is the OpenRGB version this controller was tested with.
+
+If you already have `~/OpenRGB`, update or reset it before continuing.
+
+## Step 2: get this controller source
+
+Clone this Steel Legend controller repository into your home folder:
 
 ```bash
 cd ~
 git clone https://github.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller.git
 ```
 
-Copy the controller into the OpenRGB source tree:
+If you already cloned it before, update it instead:
+
+```bash
+cd ~/openrgb-asrock-rx9070xt-steel-legend-controller
+git pull
+```
+
+## Step 3: copy the controller into the OpenRGB source tree
+
+Remove any older copy of this controller from the OpenRGB source tree, then copy in the current controller folder:
 
 ```bash
 rm -rf ~/OpenRGB/Controllers/ASRockRX9070XTGPUController
-cp -a ~/openrgb-asrock-rx9070xt-steel-legend-controller/Controllers/ASRockRX9070XTGPUController \
-      ~/OpenRGB/Controllers/
+cp -a ~/openrgb-asrock-rx9070xt-steel-legend-controller/Controllers/ASRockRX9070XTGPUController       ~/OpenRGB/Controllers/
 ```
 
-OpenRGB's qmake project dynamically includes controller source files under `Controllers/`, so no manual `OpenRGB.pro` edit is needed for this source tree layout.
+OpenRGB's qmake project automatically includes controller source files from the `Controllers/` folder, so no manual `OpenRGB.pro` edit is needed.
 
-## Build OpenRGB
+## Step 4: rebuild OpenRGB from source
 
-From the OpenRGB source tree:
+Build a local OpenRGB binary from `~/OpenRGB` with the Steel Legend controller included:
 
 ```bash
 cd ~/OpenRGB
@@ -140,67 +157,96 @@ make clean 2>/dev/null || true
 rm -f OpenRGB openrgb Makefile .qmake.stash
 
 qmake OpenRGB.pro
-make -j"$(nproc)"
+make
 ```
 
-The normal local source-build binary is:
+The rebuilt binary should be:
+
+```text
+~/OpenRGB/OpenRGB
+```
+
+## Step 5: run the rebuilt OpenRGB
+
+Run the local source-built OpenRGB binary:
 
 ```bash
+cd ~/OpenRGB
 ./OpenRGB
 ```
 
-Some distro or package builds may rename the binary to lowercase `openrgb`, but a direct OpenRGB source build uses `OpenRGB`.
+Expected result:
 
-Find the built binary if needed:
+```text
+OpenRGB opens
+ASRock RX 9070 XT Steel Legend appears as a device
+ARGB Header, Top / Side, and Fan appear as zones
+```
+
+If `./OpenRGB` does not exist, check what was built:
 
 ```bash
+cd ~/OpenRGB
 find . -maxdepth 1 -type f -executable \( -name 'OpenRGB' -o -name 'openrgb' \) -print
 ```
 
-Check for missing shared libraries before launching:
+If the binary is named `openrgb` instead, run:
 
 ```bash
-ldd ./OpenRGB | grep -E 'mbed|not found' || true
+./openrgb
 ```
 
-If `ldd` prints `not found`, rebuild OpenRGB against the libraries currently installed on your system. Do not fix missing ABI libraries by creating manual symlinks.
+## Optional: make a separate local launcher
 
-Launch the local build:
+Copy the rebuilt OpenRGB binary to a separate local command named `openrgb-asrock`:
 
 ```bash
-./OpenRGB
+mkdir -p ~/.local/bin
+cp ~/OpenRGB/OpenRGB ~/.local/bin/openrgb-asrock
+chmod +x ~/.local/bin/openrgb-asrock
 ```
 
-Do not manually overwrite `/usr/bin/openrgb`. If you want this installed system-wide, use a patched package build or submit the controller upstream to OpenRGB.
-
-## Validate the detector
-
-Check the GPU PCI/subsystem details:
+Run it with:
 
 ```bash
-lspci -Dnn | grep -Ei 'VGA|Display|3D|AMD|Radeon'
+openrgb-asrock
+```
+
+If your build produced `~/OpenRGB/openrgb` instead, copy that file instead:
+
+```bash
+mkdir -p ~/.local/bin
+cp ~/OpenRGB/openrgb ~/.local/bin/openrgb-asrock
+chmod +x ~/.local/bin/openrgb-asrock
+```
+
+## Remove the old plugin if you tested it
+
+This native controller replaces the older test plugin approach.
+
+If you previously installed the plugin, remove it before running this native build. Otherwise OpenRGB may show duplicate devices or crash while loading the stale plugin.
+
+```bash
+rm -f ~/.config/OpenRGB/plugins/libOpenRGBASRockRX9070XTPlugin.so
+```
+
+## Check the detector
+
+Use this if the Steel Legend device does not appear.
+
+This command shows the AMD GPU and subsystem ID:
+
+```bash
 lspci -Dnn -vv -d 1002:7550 | grep -Ei 'VGA|Display|Subsystem|Kernel driver'
 ```
 
-Expected Steel Legend IDs:
+Expected Steel Legend subsystem:
 
 ```text
-1002:7550 / 1849:5403
+Subsystem: ASRock Incorporation Device [1849:5403]
 ```
 
 If the subsystem ID is not `1849:5403`, this detector is not expected to attach.
-
-## Repository contents
-
-```text
-Controllers/
-└── ASRockRX9070XTGPUController/
-    ├── ASRockRX9070XTGPUController.cpp
-    ├── ASRockRX9070XTGPUController.h
-    ├── ASRockRX9070XTGPUControllerDetect.cpp
-    ├── RGBController_ASRockRX9070XTGPU.cpp
-    └── RGBController_ASRockRX9070XTGPU.h
-```
 
 ## Low-level packet
 
@@ -216,6 +262,24 @@ Known channels:
 3 = ARGB Header
 6 = Top / Side
 7 = Fan
+```
+
+## Limitations
+
+OpenRGB's normal mode handling is controller-wide. This controller exposes the GPU channels as zones, but OpenRGB's built-in mode selector does not provide independent per-zone hardware modes.
+
+Direct/effects mode is not implemented. This controller uses the tested hardware modes.
+
+## Repository contents
+
+```text
+Controllers/
+└── ASRockRX9070XTGPUController/
+    ├── ASRockRX9070XTGPUController.cpp
+    ├── ASRockRX9070XTGPUController.h
+    ├── ASRockRX9070XTGPUControllerDetect.cpp
+    ├── RGBController_ASRockRX9070XTGPU.cpp
+    └── RGBController_ASRockRX9070XTGPU.h
 ```
 
 ## License
