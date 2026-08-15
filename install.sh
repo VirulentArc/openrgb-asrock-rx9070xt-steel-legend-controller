@@ -17,6 +17,8 @@ TARGET_BIN="/usr/bin/openrgb"
 DEVICE_LOG="/tmp/openrgb-asrock-devices.log"
 QMAKE_LOG="/tmp/openrgb-asrock-qmake.log"
 BUILD_LOG="/tmp/openrgb-asrock-build.log"
+MBEDTLS_INCLUDE_FLAG=""
+MBEDTLS_LIBRARY_FLAG=""
 
 fail() {
     echo "ERROR: $*" >&2
@@ -48,6 +50,28 @@ pick_qmake() {
         5.*) ;;
         *) fail "$QMAKE is not Qt5 qmake. Found Qt version: ${qt_version:-unknown}" ;;
     esac
+}
+
+configure_mbedtls_build_flags() {
+    if [ -f /usr/include/mbedtls/ctr_drbg.h ]; then
+        MBEDTLS_INCLUDE_FLAG=""
+        MBEDTLS_LIBRARY_FLAG=""
+        echo "Using mbedTLS headers from /usr/include."
+        return
+    fi
+
+    if [ -f /usr/include/mbedtls3/mbedtls/ctr_drbg.h ]; then
+        MBEDTLS_INCLUDE_FLAG="-I/usr/include/mbedtls3"
+        MBEDTLS_LIBRARY_FLAG="-L/usr/lib/mbedtls3"
+        export PKG_CONFIG_PATH="/usr/lib/mbedtls3/pkgconfig:${PKG_CONFIG_PATH:-}"
+        echo "Using mbedTLS 3 compatibility headers from /usr/include/mbedtls3."
+        return
+    fi
+
+    echo "Checked for:"
+    echo "  /usr/include/mbedtls/ctr_drbg.h"
+    echo "  /usr/include/mbedtls3/mbedtls/ctr_drbg.h"
+    fail "mbedTLS 3 headers were not found. Install mbedtls3, then run this installer again."
 }
 
 normalize_bus() {
@@ -96,6 +120,13 @@ find_oem_busses() {
     done
 }
 
+print_i2c_bus() {
+    local bus="$1"
+    echo "i2cdetect output for bus $bus:"
+    i2cdetect -y "$bus" || true
+    echo
+}
+
 detect_bus_and_address() {
     local manual_bus="${ASROCK_RX9070XT_I2C_BUS:-}"
     local manual_addr="${ASROCK_RX9070XT_I2C_ADDR:-}"
@@ -121,9 +152,7 @@ detect_bus_and_address() {
             echo "AMDGPU OEM I2C bus was found, but address $KNOWN_ADDRESS was not detected on it."
             echo
             for candidate_bus in "${oem_busses[@]}"; do
-                echo "i2cdetect output for bus $candidate_bus:"
-                i2cdetect -y "$candidate_bus" || true
-                echo
+                print_i2c_bus "$candidate_bus"
             done
             fail "Steel Legend RGB controller address was not detected."
         fi
@@ -136,9 +165,7 @@ detect_bus_and_address() {
     fi
 
     if ! address_is_on_bus "$bus" "$addr"; then
-        echo "i2cdetect output for bus $bus:"
-        i2cdetect -y "$bus" || true
-        echo
+        print_i2c_bus "$bus"
         fail "Address $addr was not detected on I2C bus $bus."
     fi
 
@@ -149,18 +176,20 @@ detect_bus_and_address() {
 patch_controller_source() {
     local detect_file="$1"
     local header_file="$2"
-    local bus="$3"
-    local addr="$4"
+    local controller_file="$3"
+    local bus="$4"
+    local addr="$5"
 
-    python3 - "$detect_file" "$header_file" "$bus" "$addr" <<'PYTHON_PATCH_SOURCE'
+    python3 - "$detect_file" "$header_file" "$controller_file" "$bus" "$addr" <<'PYTHON_PATCH_SOURCE'
 from pathlib import Path
 import re
 import sys
 
 detect_path = Path(sys.argv[1])
 header_path = Path(sys.argv[2])
-bus = sys.argv[3]
-addr = sys.argv[4]
+controller_path = Path(sys.argv[3])
+bus = sys.argv[4]
+addr = sys.argv[5]
 
 detect_text = detect_path.read_text()
 detect_text, bus_count = re.subn(
@@ -185,7 +214,24 @@ if addr_count != 1:
     print(f"Could not set I2C address in {header_path}")
     sys.exit(1)
 header_path.write_text(header_text)
+
+# The source already uses I2C_ADDRESS in the displayed location.
 PYTHON_PATCH_SOURCE
+}
+
+install_arch_build_packages() {
+    if ! command -v pacman >/dev/null 2>&1; then
+        return
+    fi
+
+    echo "Installing required build packages."
+    sudo pacman -S --needed --noconfirm base-devel git qt5-base qt5-tools i2c-tools
+
+    if pacman -Si mbedtls3 >/dev/null 2>&1; then
+        sudo pacman -S --needed --noconfirm mbedtls3
+    else
+        sudo pacman -S --needed --noconfirm mbedtls
+    fi
 }
 
 if [ "${EUID:-$(id -u)}" -eq 0 ]; then
@@ -204,18 +250,19 @@ need_command grep
 need_command awk
 need_command sed
 
-if command -v pacman >/dev/null 2>&1; then
-    echo "Installing required build packages."
-    sudo pacman -S --needed --noconfirm base-devel git qt5-base qt5-tools mbedtls i2c-tools
-fi
+install_arch_build_packages
 
 need_command i2cdetect
 pick_qmake
+configure_mbedtls_build_flags
 
 [ -x "$TARGET_BIN" ] || fail "OpenRGB is not installed at $TARGET_BIN. Install OpenRGB first, confirm it opens, then run this installer again."
-[ -f /usr/include/mbedtls/ctr_drbg.h ] || fail "mbedTLS headers are missing. Install the mbedtls package, then run this installer again."
 
 stop_openrgb
+
+if command -v modprobe >/dev/null 2>&1; then
+    sudo modprobe i2c-dev >/dev/null 2>&1 || true
+fi
 
 echo "Detecting Steel Legend RGB controller."
 detect_bus_and_address
@@ -242,6 +289,7 @@ SOURCE_CONTROLLER_DIR="$CONTROLLER_REPO_DIR/Controllers/$CONTROLLER_DIR"
 BUILD_CONTROLLER_DIR="$OPENRGB_DIR/Controllers/$CONTROLLER_DIR"
 BUILD_DETECT_FILE="$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUControllerDetect.cpp"
 BUILD_HEADER_FILE="$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUController.h"
+BUILD_CONTROLLER_FILE="$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUController.cpp"
 
 [ -d "$SOURCE_CONTROLLER_DIR" ] || fail "Controller source folder not found: $SOURCE_CONTROLLER_DIR"
 
@@ -249,7 +297,7 @@ echo "Adding Steel Legend controller source to OpenRGB."
 rm -rf "$BUILD_CONTROLLER_DIR"
 cp -a "$SOURCE_CONTROLLER_DIR" "$OPENRGB_DIR/Controllers/"
 
-patch_controller_source "$BUILD_DETECT_FILE" "$BUILD_HEADER_FILE" "$BUS_ID" "$I2C_ADDR"
+patch_controller_source "$BUILD_DETECT_FILE" "$BUILD_HEADER_FILE" "$BUILD_CONTROLLER_FILE" "$BUS_ID" "$I2C_ADDR"
 
 echo "Rebuilding OpenRGB."
 echo "Build logs:"
@@ -259,7 +307,18 @@ echo
 cd "$OPENRGB_DIR"
 make clean >/dev/null 2>&1 || true
 rm -f OpenRGB openrgb Makefile .qmake.stash
-"$QMAKE" OpenRGB.pro 2>&1 | tee "$QMAKE_LOG"
+
+QMAKE_ARGS=(OpenRGB.pro)
+if [ -n "$MBEDTLS_INCLUDE_FLAG" ]; then
+    QMAKE_ARGS+=("QMAKE_CFLAGS+=$MBEDTLS_INCLUDE_FLAG")
+    QMAKE_ARGS+=("QMAKE_CXXFLAGS+=$MBEDTLS_INCLUDE_FLAG")
+fi
+if [ -n "$MBEDTLS_LIBRARY_FLAG" ]; then
+    QMAKE_ARGS+=("QMAKE_LFLAGS+=$MBEDTLS_LIBRARY_FLAG")
+    QMAKE_ARGS+=("LIBS+=$MBEDTLS_LIBRARY_FLAG")
+fi
+
+"$QMAKE" "${QMAKE_ARGS[@]}" 2>&1 | tee "$QMAKE_LOG"
 make -j"$(nproc)" 2>&1 | tee "$BUILD_LOG"
 
 BUILT_BIN=""
@@ -275,7 +334,6 @@ done
 if ! strings "$BUILT_BIN" | grep -Fq "$DEVICE_TEXT"; then
     fail "The rebuilt OpenRGB binary does not contain the Steel Legend controller. Build log: $BUILD_LOG"
 fi
-
 
 echo "Checking the rebuilt OpenRGB device list before replacing the installed app."
 set +e

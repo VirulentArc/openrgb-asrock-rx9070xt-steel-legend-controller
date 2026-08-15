@@ -9,6 +9,7 @@
 
 #include "ASRockRX9070XTGPUController.h"
 
+#include <cstdio>
 #include <utility>
 
 ASRockRX9070XTGPUController::ASRockRX9070XTGPUController(i2c_smbus_interface* bus_ptr, std::string device_name)
@@ -32,8 +33,11 @@ std::string ASRockRX9070XTGPUController::GetLocation() const
         return "I2C: unavailable";
     }
 
+    char address_text[8];
+    std::snprintf(address_text, sizeof(address_text), "0x%02X", I2C_ADDRESS);
+
     return std::string("I2C bus ") + std::to_string(bus->bus_id) +
-           " addr 0x36";
+           " addr " + address_text;
 }
 
 unsigned int ASRockRX9070XTGPUController::GetChannelCount() const

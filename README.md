@@ -2,11 +2,18 @@
 
 Native OpenRGB controller source for the ASRock Radeon RX 9070 XT Steel Legend GPU RGB controller.
 
+## What this controller is
+
+This repository adds native OpenRGB support for the ASRock Radeon RX 9070 XT Steel Legend GPU RGB controller.
+
+The installer rebuilds OpenRGB with this controller, backs up the current OpenRGB binary, and replaces the normal OpenRGB app binary so the regular OpenRGB launcher uses the custom build.
+
 ## Requirements
 
-- ASRock Radeon RX 9070 XT Steel Legend.
-- Arch Linux or CachyOS.
-- OpenRGB already installed and able to open normally.
+- ASRock Radeon RX 9070 XT Steel Legend
+- Linux with OpenRGB already installed and able to open normally
+- Arch, CachyOS, or another pacman-based system for the one-command installer
+- I2C access for the current user
 
 ## Install
 
@@ -18,7 +25,7 @@ curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt
 
 Then open OpenRGB normally.
 
-The card should appear as:
+The device should appear as:
 
 ```text
 ASRock RX 9070 XT Steel Legend
@@ -30,26 +37,39 @@ The installer:
 
 1. Installs the build packages needed to compile OpenRGB.
 2. Detects the AMDGPU OEM I2C bus.
-3. Detects the Steel Legend RGB controller address.
-4. Builds OpenRGB with this native controller included.
-5. Checks that the rebuilt OpenRGB can see the Steel Legend.
-6. Backs up the existing OpenRGB binary.
-7. Replaces the normal OpenRGB app binary.
+3. Confirms the Steel Legend RGB controller address is present.
+4. Builds OpenRGB with the Steel Legend controller added.
+5. Confirms the rebuilt OpenRGB binary contains the controller.
+6. Confirms the rebuilt OpenRGB binary detects the Steel Legend.
+7. Backs up the existing OpenRGB binary.
+8. Replaces the normal OpenRGB binary.
 
-After install, the normal OpenRGB launcher and the normal `openrgb` command use the custom build.
+The detected controller values are saved in:
+
+```text
+/usr/local/share/openrgb-asrock-steel-legend/
+```
+
+The build workspace is:
+
+```text
+/usr/local/src/openrgb-asrock-steel-legend/
+```
 
 ## Manual bus or address override
 
-The installer detects the bus and address automatically.
+The installer normally detects the bus and address automatically.
 
-Only use these if automatic detection fails:
+If needed, force the tested Steel Legend bus:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh -o /tmp/openrgb-asrock-steel-legend-install.sh && ASROCK_RX9070XT_I2C_BUS=7 bash /tmp/openrgb-asrock-steel-legend-install.sh
+ASROCK_RX9070XT_I2C_BUS=7 bash /tmp/openrgb-asrock-steel-legend-install.sh
 ```
 
+If needed, force both bus and address:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh -o /tmp/openrgb-asrock-steel-legend-install.sh && ASROCK_RX9070XT_I2C_BUS=7 ASROCK_RX9070XT_I2C_ADDR=0x36 bash /tmp/openrgb-asrock-steel-legend-install.sh
+ASROCK_RX9070XT_I2C_BUS=7 ASROCK_RX9070XT_I2C_ADDR=0x36 bash /tmp/openrgb-asrock-steel-legend-install.sh
 ```
 
 ## Uninstall
@@ -60,21 +80,28 @@ Run this command:
 curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/uninstall.sh -o /tmp/openrgb-asrock-steel-legend-uninstall.sh && bash /tmp/openrgb-asrock-steel-legend-uninstall.sh
 ```
 
-This restores the OpenRGB binary that was backed up during install.
+This restores the most recent OpenRGB backup created by the installer.
 
-## Tested hardware
+## Tested card
 
 ```text
-GPU: ASRock Radeon RX 9070 XT Steel Legend
+ASRock Radeon RX 9070 XT Steel Legend
+PCI ID: 1002:7550
+Subsystem: 1849:5403
 RGB I2C address: 0x36
-Known Steel Legend channels:
-  3 = ARGB Header
-  6 = Top / Side
-  7 = Fan
+Tested I2C bus on one system: 7
+```
+
+## Zones
+
+```text
+ARGB Header: channel 3
+Top / Side:  channel 6
+Fan:         channel 7
 ```
 
 ## Notes
 
-This controller is for the Steel Legend card only.
+This is native OpenRGB controller source. It is not an OpenRGB plugin.
 
-Do not use this package for the Taichi. The Taichi has a different channel map and needs different controller handling.
+The controller uses the GPU RGB controller over the AMDGPU OEM I2C bus.
