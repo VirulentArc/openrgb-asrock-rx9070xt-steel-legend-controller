@@ -21,6 +21,7 @@ git
 qmake
 make
 C++ compiler
+python3
 strings
 ```
 
@@ -84,16 +85,19 @@ The speed slider is inverted in the controller code so higher OpenRGB speed mean
 
 ## Install
 
-These commands create one source/build workspace in `/usr/local/src/openrgb-asrock-steel-legend`, rebuild OpenRGB with this controller added, and install the rebuilt OpenRGB binary as `/usr/local/bin/openrgb`.
+These commands start from a clean source/build workspace in `/usr/local/src/openrgb-asrock-steel-legend`, rebuild OpenRGB with this controller added, and install the rebuilt OpenRGB binary as `/usr/local/bin/openrgb`. The script is run through `bash`, so it does not matter whether GitHub preserved the executable bit.
 
 ```bash
+sudo rm -rf /usr/local/src/openrgb-asrock-steel-legend
+sudo rm -f /usr/local/bin/openrgb
+
 sudo install -d -m 755 -o "$USER" -g "$(id -gn)" /usr/local/src/openrgb-asrock-steel-legend
 cd /usr/local/src/openrgb-asrock-steel-legend
 
 git clone https://github.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller.git
 cd openrgb-asrock-rx9070xt-steel-legend-controller
 
-./install-native.sh
+bash ./install-native.sh
 ```
 
 The installer does these actions:
@@ -153,7 +157,7 @@ Then rerun the installer with that bus number:
 
 ```bash
 cd /usr/local/src/openrgb-asrock-steel-legend/openrgb-asrock-rx9070xt-steel-legend-controller
-ASROCK_RX9070XT_I2C_BUS=7 ./install-native.sh
+ASROCK_RX9070XT_I2C_BUS=7 bash ./install-native.sh
 ```
 
 Replace `7` with the correct bus number from `i2cdetect -l`.
@@ -178,7 +182,7 @@ Example:
 
 ```bash
 cd /usr/local/src/openrgb-asrock-steel-legend/openrgb-asrock-rx9070xt-steel-legend-controller
-./uninstall-native.sh
+bash ./uninstall-native.sh
 ```
 
 That removes:

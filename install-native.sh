@@ -79,7 +79,7 @@ if [ -z "$BUS_ID" ]; then
         BUS_ID="7"
         echo "Could not uniquely detect the AMDGPU OEM I2C bus."
         echo "Using tested Steel Legend default bus: $BUS_ID"
-        echo "To force a different bus, run: ASROCK_RX9070XT_I2C_BUS=<number> ./install-native.sh"
+        echo "To force a different bus, run: ASROCK_RX9070XT_I2C_BUS=<number> bash ./install-native.sh"
     fi
 fi
 
