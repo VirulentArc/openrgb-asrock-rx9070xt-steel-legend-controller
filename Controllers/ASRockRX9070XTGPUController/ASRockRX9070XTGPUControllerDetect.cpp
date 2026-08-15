@@ -14,6 +14,7 @@
 #include "RGBController_ASRockRX9070XTGPU.h"
 #include "i2c_smbus.h"
 
+#include <cstdint>
 #include <string>
 
 namespace

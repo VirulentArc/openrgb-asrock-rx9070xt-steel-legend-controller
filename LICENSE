@@ -1,0 +1,5 @@
+This repository contains source files intended to be built into OpenRGB.
+
+The controller source files are licensed under GPL-2.0-or-later, matching the SPDX headers in the source files and OpenRGB project licensing expectations.
+
+SPDX-License-Identifier: GPL-2.0-or-later

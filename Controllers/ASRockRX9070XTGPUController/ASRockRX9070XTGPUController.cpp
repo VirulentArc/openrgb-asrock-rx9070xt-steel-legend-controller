@@ -9,6 +9,8 @@
 
 #include "ASRockRX9070XTGPUController.h"
 
+#include <utility>
+
 ASRockRX9070XTGPUController::ASRockRX9070XTGPUController(i2c_smbus_interface* bus_ptr, std::string device_name)
     : bus(bus_ptr),
       name(std::move(device_name))

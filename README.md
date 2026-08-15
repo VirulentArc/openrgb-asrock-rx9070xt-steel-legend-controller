@@ -2,19 +2,11 @@
 
 Native OpenRGB controller source for the ASRock Radeon RX 9070 XT Steel Legend GPU RGB controller.
 
-This is **not** a standalone OpenRGB plugin. These files are meant to be copied into an OpenRGB source tree so OpenRGB can be rebuilt with the GPU supported as a native device.
-
-## Replaces the old plugin version
-
-This project originally started as a standalone OpenRGB plugin. That plugin approach was abandoned after testing because it added a separate plugin UI while also registering a device in OpenRGB, which made the setup feel awkward and limited how well the normal OpenRGB controls matched this GPU's channel-based RGB controller.
-
-This native controller version replaces the plugin. The goal is for the ASRock RX 9070 XT Steel Legend to appear as a normal OpenRGB device once the controller is built into OpenRGB.
-
-If you previously installed the test plugin, remove it before testing this native controller so OpenRGB does not show duplicate or conflicting devices.
+This is **not** a standalone OpenRGB plugin and it is **not** a drop-in runtime add-on. These files are meant to be copied into an OpenRGB source tree, then OpenRGB must be rebuilt so the GPU is supported as a native OpenRGB device.
 
 ## Status
 
-Tested on Linux with OpenRGB `0.9+ (git2305)` at commit:
+Tested on Linux with OpenRGB source commit:
 
 ```text
 4306603a28c86e91f4dd4f89b41efd3005f0b810
@@ -26,21 +18,40 @@ The controller appears as one native OpenRGB device:
 ASRock RX 9070 XT Steel Legend
 ```
 
+This is currently an external native controller source package, not an upstream OpenRGB merge request.
+
+## Supported hardware
+
+Tested card:
+
+```text
+ASRock Radeon RX 9070 XT Steel Legend 16GB
+PCI/device ID:        1002:7550
+Subsystem vendor/dev: 1849:5403
+RGB I2C address:      0x36
+```
+
+Known hardware channels:
+
+```text
+3 = ARGB Header
+6 = Top / Side
+7 = Fan
+```
+
+The detector is PCI-bound with `REGISTER_I2C_PCI_DETECTOR`, so users should not need to edit their local I2C bus number.
+
+Do **not** change the PCI IDs, I2C address, channels, or mode values for another GPU unless that card has been tested. Sending incorrect I2C data to RGB hardware can cause broken lighting behavior or a controller freeze.
+
 ## Features
 
-- Adds native OpenRGB support for the ASRock RX 9070 XT Steel Legend GPU RGB controller.
-- Uses a PCI-bound I2C detector instead of a hardcoded local bus number.
-- Matches the tested card by PCI/subsystem IDs:
-  - AMD PCI vendor: `0x1002`
-  - RX 9070 XT / Navi 48 device: `0x7550`
-  - ASRock subsystem vendor: `0x1849`
-  - ASRock RX 9070 XT Steel Legend subsystem device: `0x5403`
-- Uses the GPU's I2C RGB controller at address `0x36`.
-- Exposes the known hardware channels as OpenRGB zones:
+- Native OpenRGB GPU device, not a plugin device.
+- PCI-bound I2C detection for the tested Steel Legend card.
+- Zones exposed in OpenRGB:
   - `ARGB Header`
   - `Top / Side`
   - `Fan`
-- Supports the tested hardware modes:
+- Hardware modes:
   - Off
   - Static
   - Breathing
@@ -56,19 +67,17 @@ ASRock RX 9070 XT Steel Legend
   - Marquee Random
   - Color Wave
   - Rainbow
-- Corrects OpenRGB speed slider direction so higher speed means faster animation.
+- Speed slider is inverted so higher OpenRGB speed means faster animation on this controller.
 
-## Important notes
-
-This is currently a local native implementation, not an upstream OpenRGB merge request yet.
-
-The detector now uses `REGISTER_I2C_PCI_DETECTOR`, so users should not need to know or edit their local OpenRGB I2C bus number. OpenRGB should call the detector only for the I2C bus associated with the matching AMD/ASRock PCI device and subsystem IDs.
+## Limitations
 
 OpenRGB's normal mode handling is controller-wide. This controller exposes the GPU channels as zones, but OpenRGB's built-in mode selector does not provide independent per-zone hardware modes.
 
+Direct/effects mode is not implemented. This controller is for the tested hardware modes.
+
 ## Remove the old plugin first
 
-If you previously tested the standalone plugin version, remove it before testing the native OpenRGB build. Otherwise OpenRGB may show duplicate/conflicting devices.
+If you previously tested the standalone plugin version, remove it before testing this native controller. Otherwise OpenRGB may show duplicate or conflicting devices.
 
 Linux:
 
@@ -78,22 +87,47 @@ rm -f ~/.config/OpenRGB/plugins/libOpenRGBASRockRX9070XTPlugin.so
 
 Windows plugin builds were not provided, but if one was manually installed, remove it from your OpenRGB plugins folder before testing native support.
 
+## Linux I2C access
+
+OpenRGB must be able to access the relevant I2C device. On Linux, make sure normal OpenRGB I2C access is working first.
+
+Common checks:
+
+```bash
+sudo modprobe i2c-dev
+groups
+ls -l /dev/i2c-*
+```
+
+The user running OpenRGB usually needs access to `/dev/i2c-*`, either through distro OpenRGB udev rules, the `i2c` group, or by running OpenRGB with elevated permissions for testing.
+
 ## Install into an OpenRGB source tree
 
-Start from an OpenRGB source checkout that matches the OpenRGB version you want to run.
-
-Copy the controller folder into OpenRGB:
+Start with an OpenRGB source checkout. The tested source version is:
 
 ```bash
-cp -r Controllers/ASRockRX9070XTGPUController ~/OpenRGB/Controllers/
+cd ~
+git clone https://gitlab.com/CalcProgrammer1/OpenRGB.git OpenRGB
+cd ~/OpenRGB
+git checkout 4306603a28c86e91f4dd4f89b41efd3005f0b810
 ```
 
-Or, from inside this repository:
+Clone this controller repository separately:
 
 ```bash
-cd /path/to/openrgb-asrock-rx9070xt-steel-legend-controller
-cp -r Controllers/ASRockRX9070XTGPUController ~/OpenRGB/Controllers/
+cd ~
+git clone https://github.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller.git
 ```
+
+Copy the controller into the OpenRGB source tree:
+
+```bash
+rm -rf ~/OpenRGB/Controllers/ASRockRX9070XTGPUController
+cp -a ~/openrgb-asrock-rx9070xt-steel-legend-controller/Controllers/ASRockRX9070XTGPUController \
+      ~/OpenRGB/Controllers/
+```
+
+OpenRGB's qmake project dynamically includes controller source files under `Controllers/`, so no manual `OpenRGB.pro` edit is needed for this source tree layout.
 
 ## Build OpenRGB
 
@@ -101,38 +135,60 @@ From the OpenRGB source tree:
 
 ```bash
 cd ~/OpenRGB
+
+make clean 2>/dev/null || true
+rm -f OpenRGB openrgb Makefile .qmake.stash
+
 qmake OpenRGB.pro
 make -j"$(nproc)"
 ```
 
-Then run the locally built OpenRGB binary for testing:
+The normal local source-build binary is:
 
 ```bash
-./openrgb
+./OpenRGB
 ```
 
-Do not manually overwrite your system OpenRGB binary. If you want this installed system-wide, use a patched package build or submit the controller upstream to OpenRGB.
+Some distro or package builds may rename the binary to lowercase `openrgb`, but a direct OpenRGB source build uses `OpenRGB`.
 
-## Linux helper commands
-
-Check the OpenRGB version currently installed:
+Find the built binary if needed:
 
 ```bash
-openrgb --version
+find . -maxdepth 1 -type f -executable \( -name 'OpenRGB' -o -name 'openrgb' \) -print
 ```
 
-Check the GPU PCI/subsystem details if you are validating the detector on another system:
+Check for missing shared libraries before launching:
 
 ```bash
-lspci -nn -d 1002:
-lspci -nnvv -d 1002:
+ldd ./OpenRGB | grep -E 'mbed|not found' || true
 ```
 
-For the tested Steel Legend card, the expected IDs are:
+If `ldd` prints `not found`, rebuild OpenRGB against the libraries currently installed on your system. Do not fix missing ABI libraries by creating manual symlinks.
+
+Launch the local build:
+
+```bash
+./OpenRGB
+```
+
+Do not manually overwrite `/usr/bin/openrgb`. If you want this installed system-wide, use a patched package build or submit the controller upstream to OpenRGB.
+
+## Validate the detector
+
+Check the GPU PCI/subsystem details:
+
+```bash
+lspci -Dnn | grep -Ei 'VGA|Display|3D|AMD|Radeon'
+lspci -Dnn -vv -d 1002:7550 | grep -Ei 'VGA|Display|Subsystem|Kernel driver'
+```
+
+Expected Steel Legend IDs:
 
 ```text
 1002:7550 / 1849:5403
 ```
+
+If the subsystem ID is not `1849:5403`, this detector is not expected to attach.
 
 ## Repository contents
 
