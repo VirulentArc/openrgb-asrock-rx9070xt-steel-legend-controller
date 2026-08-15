@@ -11,7 +11,7 @@ OPENRGB_DIR="$WORKSPACE/OpenRGB"
 CONTROLLER_REPO_DIR="$WORKSPACE/openrgb-asrock-rx9070xt-steel-legend-controller"
 CONTROLLER_DIR="ASRockRX9070XTGPUController"
 SOURCE_CONTROLLER_DIR="$CONTROLLER_REPO_DIR/Controllers/$CONTROLLER_DIR"
-BUILD_CONTROLLER_DIR="$OPENRGB_DIR/Controllers"
+BUILD_CONTROLLER_DIR="$OPENRGB_DIR/asrock-rx9070xt-steel-legend-controller"
 DEVICE_TEXT="ASRock RX 9070 XT Steel Legend"
 KNOWN_ADDRESS="0x36"
 TARGET_BIN="/usr/bin/openrgb"
@@ -65,20 +65,14 @@ pick_qmake() {
 
 install_arch_build_packages() {
     if ! command -v pacman >/dev/null 2>&1; then
-        echo "pacman was not found. Skipping automatic dependency install."
+        echo "pacman was not found. Automatic dependency install is only supported on Arch-based distributions."
         echo "Install OpenRGB build dependencies for your distribution, then run this installer again."
         return
     fi
 
     echo "Installing required build packages."
     sudo pacman -S --needed --noconfirm \
-        base-devel git pkgconf qt5-base qt5-tools libusb hidapi i2c-tools
-
-    if pacman -Si mbedtls3 >/dev/null 2>&1; then
-        sudo pacman -S --needed --noconfirm mbedtls3
-    else
-        sudo pacman -S --needed --noconfirm mbedtls
-    fi
+        base-devel git pkgconf qt5-base qt5-tools libusb hidapi i2c-tools mbedtls3
 }
 
 patch_openrgb_mbedtls_paths() {
@@ -102,7 +96,7 @@ INCLUDEPATH += /usr/include/mbedtls3
 LIBS += -L/usr/lib/mbedtls3
 '''
 if 'INCLUDEPATH += /usr/include/mbedtls3' not in text:
-    text += block
+    text = text.rstrip() + '\n\n' + block
 path.write_text(text)
 PYTHON_MBEDTLS
         return
@@ -129,7 +123,17 @@ normalize_addr() {
 
 scan_i2c_addresses() {
     local bus="$1"
-    i2cdetect -y "$bus" 2>/dev/null | awk '
+    local scan_output=""
+
+    if scan_output="$(i2cdetect -y "$bus" 2>/dev/null)"; then
+        :
+    elif scan_output="$(sudo i2cdetect -y "$bus" 2>/dev/null)"; then
+        :
+    else
+        return 1
+    fi
+
+    awk '
         NR > 1 && $1 ~ /^[0-7][0-9a-fA-F]:$/ {
             row = substr($1, 1, 1)
             for(i = 2; i <= NF; i++) {
@@ -140,7 +144,7 @@ scan_i2c_addresses() {
                     print addr
                 }
             }
-        }'
+        }' <<<"$scan_output"
 }
 
 address_is_on_bus() {
@@ -186,19 +190,27 @@ detect_bus_and_address() {
             fi
         done
 
+        if [ -z "$bus" ] && [ "${#oem_busses[@]}" -eq 1 ]; then
+            bus="${oem_busses[0]}"
+        fi
+
         if [ -z "$bus" ]; then
-            echo "AMDGPU OEM I2C bus was found, but address $KNOWN_ADDRESS was not detected."
+            echo "More than one AMDGPU OEM I2C bus was found, and address $KNOWN_ADDRESS was not detected."
             for candidate_bus in "${oem_busses[@]}"; do
                 print_i2c_bus "$candidate_bus"
             done
-            fail "Steel Legend RGB controller address was not detected."
+            fail "Set ASROCK_RX9070XT_I2C_BUS=<number> and run the installer again."
         fi
     fi
 
     if [ -n "$manual_addr" ]; then
         addr="$(normalize_addr "$manual_addr")"
-    else
+    elif address_is_on_bus "$bus" "$KNOWN_ADDRESS"; then
         addr="$KNOWN_ADDRESS"
+    else
+        echo "Address $KNOWN_ADDRESS was not detected on I2C bus $bus."
+        print_i2c_bus "$bus"
+        fail "Set ASROCK_RX9070XT_I2C_ADDR=<hex address> if this Steel Legend uses a different RGB controller address."
     fi
 
     if ! address_is_on_bus "$bus" "$addr"; then
@@ -230,7 +242,7 @@ addr = sys.argv[5]
 
 detect_text = detect_path.read_text()
 detect_text, bus_count = re.subn(
-    r'(ASROCK_RX9070XT_TEST_BUS_ID\s*=\s*)\d+',
+    r'(ASROCK_RX9070XT_TEST(?:ED)?_BUS_ID\s*=\s*)\d+',
     r'\g<1>' + bus,
     detect_text,
     count=1,
@@ -273,22 +285,64 @@ verify_controller_source_files() {
     done
 }
 
-verify_project_can_see_flat_controllers() {
+patch_openrgb_project_file() {
     local project_file="$1"
-    grep -Fq 'Controllers/*.cpp' "$project_file" || fail "OpenRGB.pro does not include Controllers/*.cpp."
-    grep -Fq 'Controllers/*.h' "$project_file" || fail "OpenRGB.pro does not include Controllers/*.h."
+
+    python3 - "$project_file" <<'PYTHON_PATCH_PROJECT'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+start = '# BEGIN ASRock RX 9070 XT Steel Legend native controller'
+end = '# END ASRock RX 9070 XT Steel Legend native controller'
+if start in text:
+    before = text.split(start)[0].rstrip()
+    after = text.split(end, 1)[1].lstrip() if end in text else ''
+    text = before + '\n' + after
+block = r'''
+# BEGIN ASRock RX 9070 XT Steel Legend native controller
+INCLUDEPATH += asrock-rx9070xt-steel-legend-controller
+HEADERS += \
+    asrock-rx9070xt-steel-legend-controller/ASRockRX9070XTGPUController.h \
+    asrock-rx9070xt-steel-legend-controller/RGBController_ASRockRX9070XTGPU.h
+SOURCES += \
+    asrock-rx9070xt-steel-legend-controller/ASRockRX9070XTGPUController.cpp \
+    asrock-rx9070xt-steel-legend-controller/ASRockRX9070XTGPUControllerDetect.cpp \
+    asrock-rx9070xt-steel-legend-controller/RGBController_ASRockRX9070XTGPU.cpp
+# END ASRock RX 9070 XT Steel Legend native controller
+'''
+text = text.rstrip() + '\n\n' + block + '\n'
+path.write_text(text)
+PYTHON_PATCH_PROJECT
 }
 
-install_controller_sources_flat() {
+install_controller_sources_inside_openrgb() {
     local file
 
     echo "Adding Steel Legend controller source to OpenRGB."
-
-    rm -rf "$OPENRGB_DIR/Controllers/$CONTROLLER_DIR"
+    rm -rf "$BUILD_CONTROLLER_DIR"
+    mkdir -p "$BUILD_CONTROLLER_DIR"
     for file in "${CONTROLLER_SOURCES[@]}" "${CONTROLLER_HEADERS[@]}"; do
-        rm -f "$BUILD_CONTROLLER_DIR/$file"
         cp -a "$SOURCE_CONTROLLER_DIR/$file" "$BUILD_CONTROLLER_DIR/$file"
     done
+}
+
+verify_makefile_contains_controller() {
+    local makefile="$1"
+    local missing=0
+    local src
+
+    [ -f "$makefile" ] || fail "qmake did not create a Makefile. qmake log: $QMAKE_LOG"
+
+    for src in "${CONTROLLER_SOURCES[@]}"; do
+        if ! grep -Fq "asrock-rx9070xt-steel-legend-controller/$src" "$makefile"; then
+            echo "Missing from generated Makefile: asrock-rx9070xt-steel-legend-controller/$src" >&2
+            missing=1
+        fi
+    done
+
+    [ "$missing" -eq 0 ] || fail "qmake did not add the Steel Legend controller source files to the OpenRGB build. qmake log: $QMAKE_LOG"
 }
 
 find_built_binary() {
@@ -299,6 +353,13 @@ find_built_binary() {
         fi
     done
     return 1
+}
+
+show_link_errors_if_any() {
+    if grep -E 'undefined reference|multiple definition|ld returned|collect2:' "$BUILD_LOG" >/dev/null 2>&1; then
+        echo "Relevant linker/compiler errors from $BUILD_LOG:"
+        grep -E 'undefined reference|multiple definition|ld returned|collect2:' "$BUILD_LOG" || true
+    fi
 }
 
 if [ "${EUID:-$(id -u)}" -eq 0 ]; then
@@ -351,8 +412,7 @@ echo "Cloning Steel Legend controller source."
 git clone --quiet "$REPO_URL" "$CONTROLLER_REPO_DIR"
 
 verify_controller_source_files "$SOURCE_CONTROLLER_DIR"
-verify_project_can_see_flat_controllers "$OPENRGB_DIR/OpenRGB.pro"
-install_controller_sources_flat
+install_controller_sources_inside_openrgb
 
 patch_controller_bus_and_address \
     "$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUControllerDetect.cpp" \
@@ -361,6 +421,7 @@ patch_controller_bus_and_address \
     "$BUS_ID" \
     "$I2C_ADDR"
 
+patch_openrgb_project_file "$OPENRGB_DIR/OpenRGB.pro"
 patch_openrgb_mbedtls_paths "$OPENRGB_DIR/OpenRGB.pro"
 
 echo "Rebuilding OpenRGB."
@@ -372,22 +433,29 @@ make clean >/dev/null 2>&1 || true
 rm -f OpenRGB openrgb Makefile .qmake.stash
 
 "$QMAKE" OpenRGB.pro 2>&1 | tee "$QMAKE_LOG"
+verify_makefile_contains_controller Makefile
+
+set +e
 make -j"$(nproc)" 2>&1 | tee "$BUILD_LOG"
+make_status=${PIPESTATUS[0]}
+set -e
+if [ "$make_status" -ne 0 ]; then
+    show_link_errors_if_any
+    fail "OpenRGB build failed. Build log: $BUILD_LOG"
+fi
 
 BUILT_BIN="$(find_built_binary || true)"
 [ -n "$BUILT_BIN" ] || fail "Build finished, but no OpenRGB binary was found. Build log: $BUILD_LOG"
 
 if ! strings "$BUILT_BIN" | grep -Fq "$DEVICE_TEXT"; then
     echo "The rebuilt binary did not contain: $DEVICE_TEXT"
-    echo "Controller files copied into OpenRGB/Controllers were:"
-    ls -l "$BUILD_CONTROLLER_DIR"/ASRockRX9070XTGPUController* "$BUILD_CONTROLLER_DIR"/RGBController_ASRockRX9070XTGPU* 2>/dev/null || true
+    echo "Controller files copied into OpenRGB source were:"
+    ls -l "$BUILD_CONTROLLER_DIR" 2>/dev/null || true
     echo "qmake log: $QMAKE_LOG"
     echo "Build log: $BUILD_LOG"
     fail "The Steel Legend controller was not linked into the rebuilt OpenRGB binary."
 fi
 
-# The controller is compiled in. The final runtime scan is useful, but a failed scan should not hide
-# a successful build/install because I2C permissions and already-running sessions vary by distro.
 echo "Checking rebuilt OpenRGB device list."
 set +e
 "$BUILT_BIN" --noautoconnect --list-devices >"$DEVICE_LOG" 2>&1

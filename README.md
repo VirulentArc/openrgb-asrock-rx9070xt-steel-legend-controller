@@ -2,13 +2,11 @@
 
 Native OpenRGB controller source for the ASRock Radeon RX 9070 XT Steel Legend GPU RGB controller.
 
-## What this controller is
+## What this is
 
-This repository contains native OpenRGB controller source for the ASRock Radeon RX 9070 XT Steel Legend.
+This repository adds native OpenRGB support for the ASRock Radeon RX 9070 XT Steel Legend GPU RGB controller.
 
-A native OpenRGB controller is compiled into OpenRGB. After this installer rebuilds OpenRGB with the controller added, OpenRGB can detect the card as a normal OpenRGB device.
-
-This controller talks to the GPU RGB controller over the AMDGPU OEM I2C bus.
+The controller is compiled into OpenRGB. After installation, OpenRGB opens normally from the existing app menu, autostart entry, or `openrgb` command.
 
 ## Supported hardware
 
@@ -16,7 +14,8 @@ Tested target:
 
 ```text
 ASRock Radeon RX 9070 XT Steel Legend
-RGB controller address: 0x36
+RGB controller on the AMDGPU OEM I2C bus
+Default RGB controller address: 0x36
 ```
 
 Known zones:
@@ -27,11 +26,17 @@ Top / Side  = channel 6
 Fan         = channel 7
 ```
 
-## Requirements
+## Platform support
 
-OpenRGB must already be installed and must open normally before running this installer.
+The controller source is for Linux OpenRGB builds.
 
-## Install on Arch, CachyOS, or Arch-based Linux
+The installer currently supports Arch-based distributions, including CachyOS and Arch Linux. It uses `pacman` to install build dependencies, rebuilds OpenRGB with this controller added, then replaces the installed OpenRGB binary.
+
+Other Linux distributions may work, but they need the equivalent OpenRGB build dependencies installed manually. See the distro dependency notes below.
+
+Windows is not supported by this installer.
+
+## Install
 
 Run this command:
 
@@ -41,46 +46,98 @@ curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt
 
 Then open OpenRGB normally.
 
-The Steel Legend should appear in the device list.
+## Manual bus or address override
 
-## Manual I2C override
+The installer tries to detect the AMDGPU OEM I2C bus and confirms the RGB controller address.
 
-The installer detects the AMDGPU OEM I2C bus and the RGB controller address automatically.
+Known Steel Legend default:
 
-If needed, the bus or address can be forced:
+```text
+address 0x36
+```
+
+To force a bus:
+
+```bash
+ASROCK_RX9070XT_I2C_BUS=7 bash /tmp/openrgb-asrock-steel-legend-install.sh
+```
+
+To force both bus and address:
 
 ```bash
 ASROCK_RX9070XT_I2C_BUS=7 ASROCK_RX9070XT_I2C_ADDR=0x36 bash /tmp/openrgb-asrock-steel-legend-install.sh
 ```
 
-## Other Linux distributions
-
-The controller source is not Arch-specific, but the one-command installer is written for Arch/CachyOS.
-
-For other distributions, install OpenRGB build dependencies for your distro first, then either adapt `install.sh` or manually copy this controller source into an OpenRGB source checkout before rebuilding OpenRGB.
-
-The native controller files are:
-
-```text
-Controllers/ASRockRX9070XTGPUController/ASRockRX9070XTGPUController.cpp
-Controllers/ASRockRX9070XTGPUController/ASRockRX9070XTGPUController.h
-Controllers/ASRockRX9070XTGPUController/ASRockRX9070XTGPUControllerDetect.cpp
-Controllers/ASRockRX9070XTGPUController/RGBController_ASRockRX9070XTGPU.cpp
-Controllers/ASRockRX9070XTGPUController/RGBController_ASRockRX9070XTGPU.h
-```
-
 ## Uninstall
 
-Run:
+Run this command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/uninstall.sh -o /tmp/openrgb-asrock-steel-legend-uninstall.sh && bash /tmp/openrgb-asrock-steel-legend-uninstall.sh
 ```
 
-This restores the OpenRGB binary that was backed up by the installer.
+This restores the OpenRGB binary that was backed up during install.
 
-## Notes
+## Distro dependency notes
 
-This is native OpenRGB source, not a standalone plugin.
+The one-command installer handles these automatically on Arch-based distributions.
 
-If you previously installed the old test plugin, remove it before using this native controller.
+For other Linux distributions, install the equivalent OpenRGB build dependencies before using the source manually.
+
+Debian / Ubuntu:
+
+```bash
+sudo apt install git build-essential pkgconf qtbase5-dev qttools5-dev-tools libusb-1.0-0-dev libhidapi-dev libmbedtls-dev i2c-tools
+```
+
+Fedora:
+
+```bash
+sudo dnf install git gcc-c++ make pkgconf-pkg-config qt5-qtbase-devel qt5-linguist hidapi-devel libusbx-devel mbedtls-devel i2c-tools
+```
+
+openSUSE:
+
+```bash
+sudo zypper install git gcc-c++ make pkgconf-pkg-config libqt5-qtbase-devel libqt5-linguist libusb-1_0-devel hidapi-devel mbedtls-devel i2c-tools
+```
+
+## Build notes
+
+The installer builds OpenRGB from this tested commit:
+
+```text
+4306603a28c86e91f4dd4f89b41efd3005f0b810
+```
+
+Build files are placed under:
+
+```text
+/usr/local/src/openrgb-asrock-steel-legend
+```
+
+Install state and binary backups are placed under:
+
+```text
+/usr/local/share/openrgb-asrock-steel-legend
+```
+
+The installed OpenRGB binary is replaced at:
+
+```text
+/usr/bin/openrgb
+```
+
+## Logs
+
+The installer writes build logs here:
+
+```text
+/tmp/openrgb-asrock-qmake.log
+/tmp/openrgb-asrock-build.log
+/tmp/openrgb-asrock-devices.log
+```
+
+## License
+
+GPL-2.0-or-later, matching OpenRGB.
