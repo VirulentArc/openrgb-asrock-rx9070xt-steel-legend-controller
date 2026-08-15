@@ -239,24 +239,47 @@ import sys
 
 project_path = Path(sys.argv[1])
 controller_dir = sys.argv[2]
-block_start = "# BEGIN ASRock RX 9070 XT Steel Legend controller"
-block_end = "# END ASRock RX 9070 XT Steel Legend controller"
-block = f"""
-{block_start}
-INCLUDEPATH *= Controllers/{controller_dir}
-HEADERS *= \\
-    Controllers/{controller_dir}/ASRockRX9070XTGPUController.h \\
-    Controllers/{controller_dir}/RGBController_ASRockRX9070XTGPU.h
-SOURCES *= \\
-    Controllers/{controller_dir}/ASRockRX9070XTGPUController.cpp \\
-    Controllers/{controller_dir}/ASRockRX9070XTGPUControllerDetect.cpp \\
-    Controllers/{controller_dir}/RGBController_ASRockRX9070XTGPU.cpp
-{block_end}
-""".strip() + "\n"
-
 text = project_path.read_text()
-pattern = re.compile(re.escape(block_start) + r".*?" + re.escape(block_end) + r"\n?", re.S)
-text = pattern.sub("", text).rstrip() + "\n\n" + block
+
+headers = [
+    f"Controllers/{controller_dir}/ASRockRX9070XTGPUController.h",
+    f"Controllers/{controller_dir}/RGBController_ASRockRX9070XTGPU.h",
+]
+sources = [
+    f"Controllers/{controller_dir}/ASRockRX9070XTGPUController.cpp",
+    f"Controllers/{controller_dir}/ASRockRX9070XTGPUControllerDetect.cpp",
+    f"Controllers/{controller_dir}/RGBController_ASRockRX9070XTGPU.cpp",
+]
+include_path = f"Controllers/{controller_dir}"
+
+# Remove any older appended installer block from previous package versions.
+text = re.sub(
+    r"\n?# BEGIN ASRock RX 9070 XT Steel Legend controller.*?# END ASRock RX 9070 XT Steel Legend controller\n?",
+    "\n",
+    text,
+    flags=re.S,
+)
+
+# Remove any previous direct entries so re-running the installer is clean.
+for entry in headers + sources + [include_path]:
+    text = re.sub(rf"\n\s*{re.escape(entry)}\s*\\?", "", text)
+
+# Insert directly into the main OpenRGB lists. This is intentionally not an
+# appended block at the end of the file. The older appended-block approach was
+# too easy to appear in the Makefile through INCLUDEPATH while still not proving
+# the controller objects were part of the target link.
+def insert_after_marker(text, marker, entries):
+    marker_re = re.escape(marker)
+    m = re.search(marker_re, text)
+    if not m:
+        raise SystemExit(f"Could not find OpenRGB.pro marker: {marker}")
+    insert = "".join(f"    {entry} \\\n" for entry in entries)
+    return text[:m.end()] + "\n" + insert.rstrip("\n") + text[m.end():]
+
+text = insert_after_marker(text, "$$CONTROLLER_INCLUDES                                                                       \\", [include_path])
+text = insert_after_marker(text, "$$CONTROLLER_H                                                                              \\", headers)
+text = insert_after_marker(text, "$$CONTROLLER_CPP                                                                            \\", sources)
+
 project_path.write_text(text)
 PYTHON_PATCH_PROJECT
 }
@@ -274,12 +297,34 @@ verify_controller_source_files() {
 
 verify_makefile_contains_controller() {
     local makefile="$1"
+    local missing=0
+    local src
 
     [ -f "$makefile" ] || fail "qmake did not create a Makefile. qmake log: $QMAKE_LOG"
 
-    if ! grep -Fq "$CONTROLLER_DIR" "$makefile"; then
-        fail "qmake did not include the Steel Legend controller files in the build. qmake log: $QMAKE_LOG"
-    fi
+    for src in "${CONTROLLER_SOURCES[@]}"; do
+        if ! grep -Fq "$CONTROLLER_DIR/$src" "$makefile"; then
+            echo "Missing from generated Makefile: $CONTROLLER_DIR/$src" >&2
+            missing=1
+        fi
+    done
+
+    [ "$missing" -eq 0 ] || fail "qmake did not add the Steel Legend controller source files to the OpenRGB build. qmake log: $QMAKE_LOG"
+}
+
+verify_controller_objects_built() {
+    local missing=0
+    local base
+
+    for src in "${CONTROLLER_SOURCES[@]}"; do
+        base="${src%.cpp}"
+        if ! find "$OPENRGB_DIR" -type f \( -name "$base.o" -o -name "$base.obj" \) | grep -q .; then
+            echo "Missing built object for: $src" >&2
+            missing=1
+        fi
+    done
+
+    [ "$missing" -eq 0 ] || fail "The Steel Legend source files were in the Makefile, but their object files were not built. Build log: $BUILD_LOG"
 }
 
 install_arch_build_packages() {
@@ -385,6 +430,7 @@ fi
 "$QMAKE" "${QMAKE_ARGS[@]}" 2>&1 | tee "$QMAKE_LOG"
 verify_makefile_contains_controller "$OPENRGB_DIR/Makefile"
 make -j"$(nproc)" 2>&1 | tee "$BUILD_LOG"
+verify_controller_objects_built
 
 BUILT_BIN=""
 for candidate in "$OPENRGB_DIR/OpenRGB" "$OPENRGB_DIR/openrgb"; do

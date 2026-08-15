@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+extern "C" const char ASROCK_RX9070XT_STEEL_LEGEND_OPENRGB_CONTROLLER_MARKER[] __attribute__((used)) = "ASRock RX 9070 XT Steel Legend";
+
 namespace
 {
     static constexpr uint8_t ASROCK_RX9070XT_RGB_ADDRESS = ASRockRX9070XTGPUController::I2C_ADDRESS;
