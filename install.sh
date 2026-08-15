@@ -10,6 +10,15 @@ BACKUP_DIR="$STATE_DIR/backups"
 OPENRGB_DIR="$WORKSPACE/OpenRGB"
 CONTROLLER_REPO_DIR="$WORKSPACE/openrgb-asrock-rx9070xt-steel-legend-controller"
 CONTROLLER_DIR="ASRockRX9070XTGPUController"
+CONTROLLER_SOURCES=(
+    "ASRockRX9070XTGPUController.cpp"
+    "ASRockRX9070XTGPUControllerDetect.cpp"
+    "RGBController_ASRockRX9070XTGPU.cpp"
+)
+CONTROLLER_HEADERS=(
+    "ASRockRX9070XTGPUController.h"
+    "RGBController_ASRockRX9070XTGPU.h"
+)
 DEVICE_TEXT="ASRock RX 9070 XT Steel Legend"
 KNOWN_ADDRESS="0x36"
 QMAKE=""
@@ -219,6 +228,60 @@ header_path.write_text(header_text)
 PYTHON_PATCH_SOURCE
 }
 
+
+patch_openrgb_project_file() {
+    local project_file="$1"
+
+    python3 - "$project_file" "$CONTROLLER_DIR" <<'PYTHON_PATCH_PROJECT'
+from pathlib import Path
+import re
+import sys
+
+project_path = Path(sys.argv[1])
+controller_dir = sys.argv[2]
+block_start = "# BEGIN ASRock RX 9070 XT Steel Legend controller"
+block_end = "# END ASRock RX 9070 XT Steel Legend controller"
+block = f"""
+{block_start}
+INCLUDEPATH *= Controllers/{controller_dir}
+HEADERS *= \\
+    Controllers/{controller_dir}/ASRockRX9070XTGPUController.h \\
+    Controllers/{controller_dir}/RGBController_ASRockRX9070XTGPU.h
+SOURCES *= \\
+    Controllers/{controller_dir}/ASRockRX9070XTGPUController.cpp \\
+    Controllers/{controller_dir}/ASRockRX9070XTGPUControllerDetect.cpp \\
+    Controllers/{controller_dir}/RGBController_ASRockRX9070XTGPU.cpp
+{block_end}
+""".strip() + "\n"
+
+text = project_path.read_text()
+pattern = re.compile(re.escape(block_start) + r".*?" + re.escape(block_end) + r"\n?", re.S)
+text = pattern.sub("", text).rstrip() + "\n\n" + block
+project_path.write_text(text)
+PYTHON_PATCH_PROJECT
+}
+
+verify_controller_source_files() {
+    local dir="$1"
+    local file
+
+    [ -d "$dir" ] || fail "Controller source folder not found: $dir"
+
+    for file in "${CONTROLLER_SOURCES[@]}" "${CONTROLLER_HEADERS[@]}"; do
+        [ -f "$dir/$file" ] || fail "Missing controller source file: $dir/$file"
+    done
+}
+
+verify_makefile_contains_controller() {
+    local makefile="$1"
+
+    [ -f "$makefile" ] || fail "qmake did not create a Makefile. qmake log: $QMAKE_LOG"
+
+    if ! grep -Fq "$CONTROLLER_DIR" "$makefile"; then
+        fail "qmake did not include the Steel Legend controller files in the build. qmake log: $QMAKE_LOG"
+    fi
+}
+
 install_arch_build_packages() {
     if ! command -v pacman >/dev/null 2>&1; then
         return
@@ -291,13 +354,14 @@ BUILD_DETECT_FILE="$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUControllerDetect.cpp"
 BUILD_HEADER_FILE="$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUController.h"
 BUILD_CONTROLLER_FILE="$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUController.cpp"
 
-[ -d "$SOURCE_CONTROLLER_DIR" ] || fail "Controller source folder not found: $SOURCE_CONTROLLER_DIR"
+verify_controller_source_files "$SOURCE_CONTROLLER_DIR"
 
 echo "Adding Steel Legend controller source to OpenRGB."
 rm -rf "$BUILD_CONTROLLER_DIR"
 cp -a "$SOURCE_CONTROLLER_DIR" "$OPENRGB_DIR/Controllers/"
 
 patch_controller_source "$BUILD_DETECT_FILE" "$BUILD_HEADER_FILE" "$BUILD_CONTROLLER_FILE" "$BUS_ID" "$I2C_ADDR"
+patch_openrgb_project_file "$OPENRGB_DIR/OpenRGB.pro"
 
 echo "Rebuilding OpenRGB."
 echo "Build logs:"
@@ -319,6 +383,7 @@ if [ -n "$MBEDTLS_LIBRARY_FLAG" ]; then
 fi
 
 "$QMAKE" "${QMAKE_ARGS[@]}" 2>&1 | tee "$QMAKE_LOG"
+verify_makefile_contains_controller "$OPENRGB_DIR/Makefile"
 make -j"$(nproc)" 2>&1 | tee "$BUILD_LOG"
 
 BUILT_BIN=""
