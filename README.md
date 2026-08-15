@@ -6,20 +6,13 @@ Native OpenRGB controller source for the ASRock Radeon RX 9070 XT Steel Legend G
 
 This repository contains one native OpenRGB controller folder for the ASRock Radeon RX 9070 XT Steel Legend.
 
-A native OpenRGB controller is source code that gets compiled into OpenRGB. After this controller folder is added to an OpenRGB source checkout and OpenRGB is rebuilt, the card can appear as a normal OpenRGB device.
+A native OpenRGB controller is source code that gets compiled into OpenRGB. After this controller is compiled into OpenRGB, the card can appear as a normal OpenRGB device.
 
 This controller talks to the GPU RGB controller over the AMDGPU OEM I2C bus at address `0x36`.
 
 ## Requirements
 
 OpenRGB should already be installed and able to open normally.
-
-Check that first:
-
-```bash
-openrgb --version
-openrgb
-```
 
 You also need the normal tools required to build OpenRGB from source:
 
@@ -28,7 +21,10 @@ git
 qmake
 make
 C++ compiler
+strings
 ```
+
+On Linux, your user also needs I2C access. On many distros that means the user is in the `i2c` group.
 
 ## Supported hardware
 
@@ -37,7 +33,7 @@ Tested card:
 ```text
 ASRock Radeon RX 9070 XT Steel Legend 16GB
 RGB I2C address: 0x36
-Tested OpenRGB I2C bus: 7
+Tested RGB controller bus: AMDGPU OEM I2C bus
 ```
 
 Known hardware channels:
@@ -47,8 +43,6 @@ Known hardware channels:
 6 = Top / Side
 7 = Fan
 ```
-
-This release uses the tested Linux OpenRGB I2C bus detector. It registers the controller on bus `7` at address `0x36`.
 
 ## What this adds to OpenRGB
 
@@ -88,122 +82,44 @@ Rainbow
 
 The speed slider is inverted in the controller code so higher OpenRGB speed means faster animation on this GPU.
 
-## Step 1: create the build workspace
+## Install
 
-This creates a clean source/build workspace under `/usr/local/src`.
+These commands create one source/build workspace in `/usr/local/src/openrgb-asrock-steel-legend`, rebuild OpenRGB with this controller added, and install the rebuilt OpenRGB binary as `/usr/local/bin/openrgb`.
 
 ```bash
-sudo rm -rf /usr/local/src/openrgb-asrock-steel-legend
-sudo mkdir -p /usr/local/src/openrgb-asrock-steel-legend
-sudo chown "$USER" /usr/local/src/openrgb-asrock-steel-legend
+sudo install -d -m 755 -o "$USER" -g "$(id -gn)" /usr/local/src/openrgb-asrock-steel-legend
 cd /usr/local/src/openrgb-asrock-steel-legend
-```
 
-## Step 2: get the tested OpenRGB source code
-
-This downloads the OpenRGB source code into the build workspace and checks out the OpenRGB commit this controller was tested with.
-
-```bash
-git clone https://gitlab.com/CalcProgrammer1/OpenRGB.git
-cd /usr/local/src/openrgb-asrock-steel-legend/OpenRGB
-git checkout 4306603a28c86e91f4dd4f89b41efd3005f0b810
-```
-
-Confirm the checked-out commit:
-
-```bash
-git rev-parse HEAD
-```
-
-Expected result:
-
-```text
-4306603a28c86e91f4dd4f89b41efd3005f0b810
-```
-
-## Step 3: get this Steel Legend controller source
-
-This downloads this controller repository into the same build workspace.
-
-```bash
-cd /usr/local/src/openrgb-asrock-steel-legend
 git clone https://github.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller.git
+cd openrgb-asrock-rx9070xt-steel-legend-controller
+
+./install-native.sh
 ```
 
-## Step 4: copy the controller into the OpenRGB source tree
-
-This places the Steel Legend controller folder inside OpenRGB's `Controllers/` folder.
-
-```bash
-rm -rf /usr/local/src/openrgb-asrock-steel-legend/OpenRGB/Controllers/ASRockRX9070XTGPUController
-cp -a /usr/local/src/openrgb-asrock-steel-legend/openrgb-asrock-rx9070xt-steel-legend-controller/Controllers/ASRockRX9070XTGPUController \
-      /usr/local/src/openrgb-asrock-steel-legend/OpenRGB/Controllers/
-```
-
-OpenRGB's qmake project automatically includes controller source files from the `Controllers/` folder. No manual `OpenRGB.pro` edit is needed.
-
-## Step 5: rebuild OpenRGB
-
-This builds OpenRGB from the source tree that now contains the Steel Legend controller.
-
-```bash
-cd /usr/local/src/openrgb-asrock-steel-legend/OpenRGB
-rm -f OpenRGB openrgb Makefile .qmake.stash
-qmake OpenRGB.pro
-make -j4
-```
-
-The rebuilt binary should be:
+The installer does these actions:
 
 ```text
-/usr/local/src/openrgb-asrock-steel-legend/OpenRGB/OpenRGB
+clones the tested OpenRGB source commit into /usr/local/src/openrgb-asrock-steel-legend/OpenRGB
+copies this controller folder into OpenRGB/Controllers/
+auto-detects the AMDGPU OEM I2C bus when possible
+rebuilds OpenRGB
+checks that the rebuilt binary contains the Steel Legend controller
+copies the rebuilt binary to /usr/local/bin/openrgb
 ```
 
-## Step 6: confirm the rebuilt binary contains the controller
-
-This checks that the Steel Legend controller text exists inside the binary that was just built.
-
-```bash
-strings /usr/local/src/openrgb-asrock-steel-legend/OpenRGB/OpenRGB | grep -F "ASRock RX 9070 XT Steel Legend"
-```
-
-Expected result:
-
-```text
-ASRock RX 9070 XT Steel Legend
-```
-
-## Step 7: install the rebuilt OpenRGB binary as the normal command
-
-This copies the rebuilt OpenRGB binary to `/usr/local/bin/openrgb`.
-
-Most Linux systems check `/usr/local/bin` before `/usr/bin`, so the normal `openrgb` command should run this rebuilt copy.
-
-```bash
-sudo cp /usr/local/src/openrgb-asrock-steel-legend/OpenRGB/OpenRGB /usr/local/bin/openrgb
-sudo chmod 755 /usr/local/bin/openrgb
-```
-
-Confirm which OpenRGB will run:
+After it finishes, confirm the normal command runs the rebuilt copy:
 
 ```bash
 command -v openrgb
-strings "$(command -v openrgb)" | grep -F "ASRock RX 9070 XT Steel Legend"
 ```
 
-Expected command path:
+Expected result:
 
 ```text
 /usr/local/bin/openrgb
 ```
 
-Expected controller text:
-
-```text
-ASRock RX 9070 XT Steel Legend
-```
-
-## Step 8: run OpenRGB normally
+Then run OpenRGB normally:
 
 ```bash
 openrgb
@@ -216,6 +132,31 @@ OpenRGB opens
 ASRock RX 9070 XT Steel Legend appears as a device
 ARGB Header, Top / Side, and Fan appear as zones
 ```
+
+## If the card is on a different I2C bus
+
+The installer tries to find the AMDGPU OEM I2C bus automatically.
+
+If the device does not appear, check the bus list:
+
+```bash
+i2cdetect -l
+```
+
+Look for the AMDGPU OEM bus. Example:
+
+```text
+i2c-7   i2c   AMDGPU DM i2c OEM bus   I2C adapter
+```
+
+Then rerun the installer with that bus number:
+
+```bash
+cd /usr/local/src/openrgb-asrock-steel-legend/openrgb-asrock-rx9070xt-steel-legend-controller
+ASROCK_RX9070XT_I2C_BUS=7 ./install-native.sh
+```
+
+Replace `7` with the correct bus number from `i2cdetect -l`.
 
 ## Autostart
 
@@ -233,44 +174,18 @@ Example:
 /usr/local/bin/openrgb --startminimized --profile "Dark"
 ```
 
-## If the device does not appear
-
-First confirm that the OpenRGB binary being launched contains the controller:
-
-```bash
-command -v openrgb
-strings "$(command -v openrgb)" | grep -F "ASRock RX 9070 XT Steel Legend"
-```
-
-If the text does not appear, the normal `openrgb` command is not running the rebuilt binary.
-
-If the text appears but the device still does not appear, check the I2C bus list:
-
-```bash
-i2cdetect -l
-```
-
-This release expects the tested Steel Legend RGB bus to be OpenRGB I2C bus `7`. If the AMDGPU OEM bus is not bus `7` on your system, edit this line before rebuilding:
-
-```cpp
-static constexpr int     ASROCK_RX9070XT_TESTED_BUS_ID = 7;
-```
-
-File:
-
-```text
-/usr/local/src/openrgb-asrock-steel-legend/OpenRGB/Controllers/ASRockRX9070XTGPUController/ASRockRX9070XTGPUControllerDetect.cpp
-```
-
-Change `7` to the correct AMDGPU OEM I2C bus number, then rebuild from Step 5.
-
 ## Remove this custom build
 
-This removes the rebuilt OpenRGB binary and the source/build workspace.
-
 ```bash
-sudo rm -f /usr/local/bin/openrgb
-sudo rm -rf /usr/local/src/openrgb-asrock-steel-legend
+cd /usr/local/src/openrgb-asrock-steel-legend/openrgb-asrock-rx9070xt-steel-legend-controller
+./uninstall-native.sh
+```
+
+That removes:
+
+```text
+/usr/local/bin/openrgb
+/usr/local/src/openrgb-asrock-steel-legend
 ```
 
 After that, the normal distro OpenRGB package should be used again:
