@@ -11,6 +11,7 @@ OPENRGB_DIR="$WORKSPACE/OpenRGB"
 CONTROLLER_REPO_DIR="$WORKSPACE/openrgb-asrock-rx9070xt-steel-legend-controller"
 CONTROLLER_DIR="ASRockRX9070XTGPUController"
 DEVICE_TEXT="ASRock RX 9070 XT Steel Legend"
+DEVICE_LOG="/tmp/openrgb-asrock-devices.log"
 
 if [ "${EUID:-$(id -u)}" -eq 0 ]; then
     echo "Do not run this script with sudo."
@@ -25,12 +26,19 @@ need_command() {
     fi
 }
 
+stop_openrgb() {
+    pkill -x OpenRGB >/dev/null 2>&1 || true
+    pkill -x openrgb >/dev/null 2>&1 || true
+    sleep 1
+}
+
 need_command git
 need_command qmake
 need_command make
 need_command strings
 need_command python3
 need_command nproc
+need_command grep
 
 if [ -x /usr/bin/openrgb ]; then
     TARGET_BIN="/usr/bin/openrgb"
@@ -48,7 +56,10 @@ if [ ! -e "$TARGET_BIN" ]; then
     exit 1
 fi
 
-cd /
+cd /tmp
+
+echo "Stopping any running OpenRGB process."
+stop_openrgb
 
 echo "Installing custom OpenRGB over: $TARGET_BIN"
 echo "Build workspace: $WORKSPACE"
@@ -106,7 +117,7 @@ rm -rf "$BUILD_CONTROLLER_DIR"
 cp -a "$SOURCE_CONTROLLER_DIR" "$OPENRGB_DIR/Controllers/"
 
 BUILD_DETECT_FILE="$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUControllerDetect.cpp"
-python3 - "$BUILD_DETECT_FILE" "$BUS_ID" <<'PY'
+python3 - "$BUILD_DETECT_FILE" "$BUS_ID" <<'PYTHON_PATCH_BUS'
 from pathlib import Path
 import re
 import sys
@@ -118,7 +129,7 @@ if count != 1:
     print(f"Could not set bus number in {path}")
     sys.exit(1)
 path.write_text(text)
-PY
+PYTHON_PATCH_BUS
 
 echo "Rebuilding OpenRGB."
 echo "Build output will be written to:"
@@ -170,6 +181,36 @@ sudo install -m 755 "$BUILT_BIN" "$TARGET_BIN"
 if ! strings "$TARGET_BIN" | grep -Fq "$DEVICE_TEXT"; then
     echo "Install failed: $TARGET_BIN does not contain the Steel Legend controller after copy."
     exit 1
+fi
+
+echo "Stopping any running OpenRGB process before launch."
+stop_openrgb
+
+echo "Checking installed OpenRGB device list."
+set +e
+"$TARGET_BIN" --noautoconnect --list-devices >"$DEVICE_LOG" 2>&1
+list_status=$?
+set -e
+
+if grep -Fq "$DEVICE_TEXT" "$DEVICE_LOG"; then
+    echo "Detected: $DEVICE_TEXT"
+else
+    echo "The custom OpenRGB binary was installed, but OpenRGB did not detect the Steel Legend."
+    echo "Device-list output was saved to: $DEVICE_LOG"
+    echo
+    cat "$DEVICE_LOG"
+    echo
+    if [ "$list_status" -ne 0 ]; then
+        echo "OpenRGB exited with status $list_status while listing devices."
+    fi
+    echo "Try forcing the tested bus with:"
+    echo "  cd /tmp && curl -fsSL https://raw.githubusercontent.com/VirulentArc/openrgb-asrock-rx9070xt-steel-legend-controller/main/install.sh | env ASROCK_RX9070XT_I2C_BUS=7 bash"
+    exit 1
+fi
+
+if [ "$(command -v openrgb || true)" != "$TARGET_BIN" ]; then
+    echo "Warning: the openrgb command resolves to: $(command -v openrgb || true)"
+    echo "Installed custom binary is: $TARGET_BIN"
 fi
 
 echo
