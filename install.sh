@@ -10,6 +10,7 @@ BACKUP_DIR="$STATE_DIR/backups"
 OPENRGB_DIR="$WORKSPACE/OpenRGB"
 CONTROLLER_REPO_DIR="$WORKSPACE/openrgb-asrock-rx9070xt-steel-legend-controller"
 CONTROLLER_DIR="ASRockRX9070XTGPUController"
+SOURCE_CONTROLLER_DIR="$CONTROLLER_REPO_DIR/Controllers/$CONTROLLER_DIR"
 DEVICE_TEXT="ASRock RX 9070 XT Steel Legend"
 KNOWN_ADDRESS="0x36"
 TARGET_BIN="/usr/bin/openrgb"
@@ -19,6 +20,16 @@ DEVICE_LOG="/tmp/openrgb-asrock-devices.log"
 QMAKE=""
 BUS_ID=""
 I2C_ADDR=""
+
+CONTROLLER_SOURCES=(
+    ASRockRX9070XTGPUController.cpp
+    ASRockRX9070XTGPUControllerDetect.cpp
+    RGBController_ASRockRX9070XTGPU.cpp
+)
+CONTROLLER_HEADERS=(
+    ASRockRX9070XTGPUController.h
+    RGBController_ASRockRX9070XTGPU.h
+)
 
 fail() {
     echo "ERROR: $*" >&2
@@ -76,16 +87,18 @@ patch_openrgb_mbedtls_paths() {
     fi
 
     if [ -f /usr/include/mbedtls3/mbedtls/ctr_drbg.h ]; then
-        echo "Using mbedTLS 3 compatibility headers from /usr/include/mbedtls3."
-        python3 - "$project_file" <<'PY'
+        echo "Using mbedTLS compatibility headers from /usr/include/mbedtls3."
+        python3 - "$project_file" <<'PYTHON_MBEDTLS'
 from pathlib import Path
 import sys
 path = Path(sys.argv[1])
 text = path.read_text()
-text = text.replace('/usr/include/mbedtls/', '/usr/include/mbedtls3/')
-text = text.replace('-L/usr/lib/mbedtls/', '-L/usr/lib/mbedtls3/')
+if 'INCLUDEPATH += /usr/include/mbedtls3' not in text:
+    text += '\n# ASRock RX 9070 XT Steel Legend installer: mbedTLS compatibility paths\n'
+    text += 'INCLUDEPATH += /usr/include/mbedtls3\n'
+    text += 'LIBS += -L/usr/lib/mbedtls3\n'
 path.write_text(text)
-PY
+PYTHON_MBEDTLS
         return
     fi
 
@@ -194,60 +207,123 @@ detect_bus_and_address() {
 patch_controller_bus_and_address() {
     local detect_file="$1"
     local header_file="$2"
-    local bus="$3"
-    local addr="$4"
+    local controller_file="$3"
+    local bus="$4"
+    local addr="$5"
 
-    python3 - "$detect_file" "$header_file" "$bus" "$addr" <<'PY'
+    python3 - "$detect_file" "$header_file" "$controller_file" "$bus" "$addr" <<'PYTHON_PATCH_SOURCE'
 from pathlib import Path
 import re
 import sys
 
 detect_path = Path(sys.argv[1])
 header_path = Path(sys.argv[2])
-bus = sys.argv[3]
-addr = sys.argv[4]
+controller_path = Path(sys.argv[3])
+bus = sys.argv[4]
+addr = sys.argv[5]
 
 detect_text = detect_path.read_text()
-detect_text, count = re.subn(
+detect_text, bus_count = re.subn(
     r'(ASROCK_RX9070XT_TEST_BUS_ID\s*=\s*)\d+',
     r'\g<1>' + bus,
     detect_text,
     count=1,
 )
-if count != 1:
-    print(f"Could not patch bus ID in {detect_path}")
+if bus_count != 1:
+    print(f"Could not set bus number in {detect_path}")
     sys.exit(1)
 detect_path.write_text(detect_text)
 
 header_text = header_path.read_text()
-header_text, count = re.subn(
+header_text, addr_count = re.subn(
     r'(I2C_ADDRESS\s*=\s*)0x[0-9A-Fa-f]+',
     r'\g<1>' + addr,
     header_text,
     count=1,
 )
-if count != 1:
-    print(f"Could not patch I2C address in {header_path}")
+if addr_count != 1:
+    print(f"Could not set I2C address in {header_path}")
     sys.exit(1)
 header_path.write_text(header_text)
-PY
+
+controller_text = controller_path.read_text()
+controller_text = re.sub(
+    r'" addr 0x[0-9A-Fa-f]+"',
+    f'" addr {addr}"',
+    controller_text,
+)
+controller_path.write_text(controller_text)
+PYTHON_PATCH_SOURCE
+}
+
+patch_openrgb_project_file() {
+    local project_file="$1"
+    local ctrl_dir="$2"
+
+    python3 - "$project_file" "$ctrl_dir" <<'PYTHON_PATCH_PROJECT'
+from pathlib import Path
+import sys
+
+project_path = Path(sys.argv[1])
+ctrl_dir = Path(sys.argv[2])
+text = project_path.read_text()
+
+block_start = '# BEGIN ASRock RX 9070 XT Steel Legend controller installer block'
+block_end = '# END ASRock RX 9070 XT Steel Legend controller installer block'
+if block_start in text:
+    before = text.split(block_start)[0].rstrip()
+    after = text.split(block_end, 1)[1].lstrip() if block_end in text else ''
+    text = before + '\n' + after
+
+ctrl = str(ctrl_dir)
+entries = f'''
+{block_start}
+ASROCK_RX9070XT_STEEL_LEGEND_CONTROLLER_DIR = {ctrl}
+INCLUDEPATH += $$ASROCK_RX9070XT_STEEL_LEGEND_CONTROLLER_DIR
+HEADERS += \\
+    $$ASROCK_RX9070XT_STEEL_LEGEND_CONTROLLER_DIR/ASRockRX9070XTGPUController.h \\
+    $$ASROCK_RX9070XT_STEEL_LEGEND_CONTROLLER_DIR/RGBController_ASRockRX9070XTGPU.h
+SOURCES += \\
+    $$ASROCK_RX9070XT_STEEL_LEGEND_CONTROLLER_DIR/ASRockRX9070XTGPUController.cpp \\
+    $$ASROCK_RX9070XT_STEEL_LEGEND_CONTROLLER_DIR/ASRockRX9070XTGPUControllerDetect.cpp \\
+    $$ASROCK_RX9070XT_STEEL_LEGEND_CONTROLLER_DIR/RGBController_ASRockRX9070XTGPU.cpp
+{block_end}
+'''
+text = text.rstrip() + '\n\n' + entries
+project_path.write_text(text)
+PYTHON_PATCH_PROJECT
 }
 
 verify_controller_source_files() {
     local dir="$1"
-    for file in \
-        ASRockRX9070XTGPUController.cpp \
-        ASRockRX9070XTGPUController.h \
-        ASRockRX9070XTGPUControllerDetect.cpp \
-        RGBController_ASRockRX9070XTGPU.cpp \
-        RGBController_ASRockRX9070XTGPU.h
-    do
+    local file
+
+    [ -d "$dir" ] || fail "Controller source folder not found: $dir"
+
+    for file in "${CONTROLLER_SOURCES[@]}" "${CONTROLLER_HEADERS[@]}"; do
         [ -f "$dir/$file" ] || fail "Missing controller source file: $dir/$file"
     done
 }
 
+verify_makefile_contains_controller() {
+    local makefile="$1"
+    local missing=0
+    local src
+
+    [ -f "$makefile" ] || fail "qmake did not create a Makefile. qmake log: $QMAKE_LOG"
+
+    for src in "${CONTROLLER_SOURCES[@]}"; do
+        if ! grep -Fq "$SOURCE_CONTROLLER_DIR/$src" "$makefile"; then
+            echo "Missing from generated Makefile: $SOURCE_CONTROLLER_DIR/$src" >&2
+            missing=1
+        fi
+    done
+
+    [ "$missing" -eq 0 ] || fail "qmake did not add the Steel Legend controller source files to the OpenRGB build. qmake log: $QMAKE_LOG"
+}
+
 find_built_binary() {
-    for candidate in "$OPENRGB_DIR/openrgb" "$OPENRGB_DIR/OpenRGB"; do
+    for candidate in "$OPENRGB_DIR/OpenRGB" "$OPENRGB_DIR/openrgb"; do
         if [ -x "$candidate" ]; then
             printf '%s\n' "$candidate"
             return 0
@@ -257,7 +333,7 @@ find_built_binary() {
 }
 
 if [ "${EUID:-$(id -u)}" -eq 0 ]; then
-    fail "Do not run this script with sudo. Run it as your normal user."
+    fail "Do not run this script with sudo. Run the install command as your normal user."
 fi
 
 cd /tmp
@@ -305,21 +381,16 @@ git -C "$OPENRGB_DIR" checkout --quiet --force "$OPENRGB_COMMIT"
 echo "Cloning Steel Legend controller source."
 git clone --quiet "$REPO_URL" "$CONTROLLER_REPO_DIR"
 
-SOURCE_CONTROLLER_DIR="$CONTROLLER_REPO_DIR/Controllers/$CONTROLLER_DIR"
-BUILD_CONTROLLER_DIR="$OPENRGB_DIR/Controllers/$CONTROLLER_DIR"
-
 verify_controller_source_files "$SOURCE_CONTROLLER_DIR"
 
-echo "Adding Steel Legend controller source to OpenRGB."
-rm -rf "$BUILD_CONTROLLER_DIR"
-cp -a "$SOURCE_CONTROLLER_DIR" "$OPENRGB_DIR/Controllers/"
-
 patch_controller_bus_and_address \
-    "$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUControllerDetect.cpp" \
-    "$BUILD_CONTROLLER_DIR/ASRockRX9070XTGPUController.h" \
+    "$SOURCE_CONTROLLER_DIR/ASRockRX9070XTGPUControllerDetect.cpp" \
+    "$SOURCE_CONTROLLER_DIR/ASRockRX9070XTGPUController.h" \
+    "$SOURCE_CONTROLLER_DIR/ASRockRX9070XTGPUController.cpp" \
     "$BUS_ID" \
     "$I2C_ADDR"
 
+patch_openrgb_project_file "$OPENRGB_DIR/OpenRGB.pro" "$SOURCE_CONTROLLER_DIR"
 patch_openrgb_mbedtls_paths "$OPENRGB_DIR/OpenRGB.pro"
 
 echo "Rebuilding OpenRGB."
@@ -331,10 +402,7 @@ make clean >/dev/null 2>&1 || true
 rm -f OpenRGB openrgb Makefile .qmake.stash
 
 "$QMAKE" OpenRGB.pro 2>&1 | tee "$QMAKE_LOG"
-
-if ! grep -Fq "$CONTROLLER_DIR/ASRockRX9070XTGPUController.cpp" Makefile; then
-    fail "qmake did not include the Steel Legend controller source. qmake log: $QMAKE_LOG"
-fi
+verify_makefile_contains_controller "$OPENRGB_DIR/Makefile"
 
 make -j"$(nproc)" 2>&1 | tee "$BUILD_LOG"
 
@@ -381,7 +449,4 @@ fi
 
 stop_openrgb
 
-echo
-echo "Done."
-echo "Open OpenRGB normally."
-echo "The device should appear as: $DEVICE_TEXT"
+echo "Done. Open OpenRGB normally."
